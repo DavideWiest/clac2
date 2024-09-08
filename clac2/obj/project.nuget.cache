@@ -1,0 +1,10 @@
+{
+  "version": 2,
+  "dgSpecHash": "VRzck+zkfweMY9X/IlOZK/k9QygvvoJAdD5c0jhBMFaz5uf3u+b7WMth/5gKlf6iB1TtDHFjUWnVG0wkZXVQlQ==",
+  "success": true,
+  "projectFilePath": "C:\\Users\\DavWi\\OneDrive\\Desktop\\V-ProjektDateien\\Projekte\\clac2\\clac2\\clac2.fsproj",
+  "expectedPackageFiles": [
+    "C:\\Users\\DavWi\\.nuget\\packages\\fsharp.core\\8.0.200\\fsharp.core.8.0.200.nupkg.sha512"
+  ],
+  "logs": []
+}

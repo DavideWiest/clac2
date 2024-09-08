@@ -3,6 +3,10 @@ module rec Clac2.Utilities
 open Clac2.Domain
 open System
 
+module Map =
+    let merge (m1: Map<'a, 'b>) (m2: Map<'a, 'b>) =
+        m1 |> Map.fold (fun acc k v -> Map.add k v acc) m2
+
 let getInput (args: string array) =
     let readInput () =
         printf "Enter the program:\n"
@@ -15,7 +19,7 @@ let getInput (args: string array) =
     if args.Length = 0 then
         readInput()
     else
-        readFile args.[0]
+        readFile args[0]
 
 let stringIsEmpty (s: string) =
     s.Trim().Length = 0
@@ -43,12 +47,19 @@ let joinErrorTuple (results: Result<'a, string> * Result<'b, string>) =
     | Error e1, Error e2 ->(e1 + "\n" + e2)
     | _ -> "Misused joinErrorTuple: both results are Ok"
 
+let nameIsValid (name: string) =
+    let invalidChars = " \t\n\r;:()[]{}" |> Seq.toArray
+    not (name |> Seq.exists (fun x -> invalidChars |> Array.contains x))
+
 let trimSplit (cs: char array) (s: string) =
     s.Split cs
     |> Array.map (fun x -> x.Trim())
 
 let getKeys (m: Map<'a, 'b>) =
     m |> Map.toSeq |> Seq.map fst |> Seq.toArray
+
+let getValues (m: Map<'a, 'b>) =
+    m |> Map.toSeq |> Seq.map snd |> Seq.toArray
 
 let hasDuplicatesBy (arr: 'a array) (f: 'a -> 'b) =
     arr |> Array.groupBy f |> Array.exists (fun (_, a) -> a.Length > 1)
@@ -73,13 +84,32 @@ let lineToString (line: Line) =
         sprintf "type %s : %s" t.name signature
 
 
-
-let buildStandardContext (baseVars: Map<string, Value>) (baseFuncs: Map<string, DefinedCallableFunction>) (supportedTypes: string array) =
+let buildStandardContext (baseVars: DefinedCallableFunction array) (baseFuncs: DefinedCallableFunction array) (supportedTypes: string array) commentIdentifier =
     {
         defCtx = {
             types = supportedTypes
-            values = Array.concat [baseVars |> getKeys; baseFuncs |> getKeys]
+            functions = Array.concat [baseVars |> Array.map (fun x -> x.name); baseFuncs |> Array.map (fun x -> x.name)]
         }
+        definedCtx = {
+            functions = Array.concat [baseVars; baseFuncs]
+        }
+        commentIdentifier = commentIdentifier
+    }
+
+let FSharpConstantToFn constantType (x: string * DefinedValue) =
+    {
+        name = x |> fst
+        signature = [| constantType |]
+        args = [| |]
+        DefinedFn = fun _ -> Ok (x |> snd)
+    }
+
+let fSharpFunctionToFn (typedArgs: (string * FnType) array) (returnType: FnType) (nameAndFn: string * DefinedFn) =
+    {
+        name = nameAndFn |> fst
+        signature = typedArgs |> Array.map snd |> Array.append [| returnType |]
+        args = typedArgs |> Array.map fst
+        DefinedFn = nameAndFn |> snd
     }
 
 let resultToReturnCode x =

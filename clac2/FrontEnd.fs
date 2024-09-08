@@ -26,11 +26,14 @@ type UnparsedTypeDefinition = {
     unparsedSignature: string
 }
 
-let parse (baseDefinitionContext: DefinitionContext) (input: string) : Result<Line array, string> =
+let parse (standardContext: StandardContext) (input: string) : Result<Line array, string> =
+    let defCtx = standardContext.defCtx
+
     let maybePreParsedLines = 
         input
         |> trimSplit [| '\n'; ';' |]
         |> Array.filter (fun x -> x <> "")
+        |> Array.filter (fun x -> not (x.StartsWith standardContext.commentIdentifier))
         |> Array.map ToUnparsedLine
         |> combineResultsToArray
 
@@ -39,13 +42,16 @@ let parse (baseDefinitionContext: DefinitionContext) (input: string) : Result<Li
     | Ok preParsedLines ->
 
         let customTypes = preParsedLines |> Array.choose (fun x -> match x with | UnparsedTypeDefinition t -> Some t.name | _ -> None)
-        let customValues = preParsedLines |> Array.choose (fun x -> match x with | UnparsedAssignment f -> Some f.name | _ -> None)
+        let customAssignments = preParsedLines |> Array.choose (fun x -> match x with | UnparsedAssignment f -> Some f.name | _ -> None)
         let definitionContext = { 
-            baseDefinitionContext with types = Array.concat [customTypes; baseDefinitionContext.types]; values = Array.concat [customValues; baseDefinitionContext.values] 
+            defCtx with types = Array.concat [customTypes; defCtx.types]; functions = Array.concat [customAssignments; defCtx.functions] 
         }
+        
+        let maybeFunctionDuplicates = hasDuplicatesByReturning definitionContext.functions id
+        if maybeFunctionDuplicates.Length > 0 then Error ("Duplicate function definitions: " + (maybeFunctionDuplicates |> String.concat ", ")) else
 
-        if hasDuplicatesBy definitionContext.values id then Error "Duplicate function definitions" else
-        if hasDuplicatesBy definitionContext.types id then Error "Duplicate type definitions" else
+        let maybeTypeDuplicates = hasDuplicatesByReturning definitionContext.types id
+        if maybeTypeDuplicates.Length > 0 then Error ("Duplicate type definitions: " + (maybeTypeDuplicates |> String.concat ", ")) else
 
         preParsedLines
         |> Array.map (ParseLine definitionContext)
@@ -70,15 +76,15 @@ let ToUnparsedCallableFunction (line: string) : Result<UnparsedCallableFunction,
     if firstColon > firstEqual then Error "Assignment is missing a colon before the assignment." else
     if firstColon = firstEqual - 1 then Error "Assignment missing type signature between colon and equals." else
 
-    let nameAndArgs = parts.[1..firstColon-1]
-    let name , args = nameAndArgs.[0], nameAndArgs.[1..]
+    let nameAndArgs = parts[1..firstColon-1]
+    let name , args = nameAndArgs[0], nameAndArgs[1..]
     if not (nameIsValid name) then Error ("Invalid function name: " + name) else
-    let signatureParts = parts.[firstColon+1..firstEqual-1]
+    let signatureParts = parts[firstColon+1..firstEqual-1]
     if (signatureParts |> Array.length) - 1 <> (args |> Array.length) then Error "Function signature does not match number of arguments." else
     if args |> Array.map nameIsValid |> Array.exists (id >> not) then Error "Invalid argument name." else
 
     let signature = signatureParts |> String.concat " "
-    let maybeFnBody = parts.[firstEqual+1..] |> String.concat " " |> ToUnparsedManipulation
+    let maybeFnBody = parts[firstEqual+1..] |> String.concat " " |> ToUnparsedManipulation
     
     match maybeFnBody with
     | Error e -> Error ("Error parsing function body: " + e)
@@ -101,12 +107,13 @@ let ToUnparsedTypeDefinition (line: string) : Result<UnparsedTypeDefinition, str
     let parts = line |> trimSplit [| ' ' |]
     if parts.Length < 3 then Error "Type definition missing parts. Missing space?" else
 
-    let firstColon = parts |> Array.findIndex (fun x -> x = ":")
+    let maybeFirstColon = parts |> Array.tryFindIndex (fun x -> x = ":")
+    if maybeFirstColon = None then Error "Type definition missing a colon separated by spaces." else
 
-    let name = parts.[1]
+    let name = parts[1]
     if not (nameIsValid name) then Error ("Invalid type name: " + name) else
 
-    let signature = parts.[firstColon+1..] |> String.concat " "
+    let signature = parts[maybeFirstColon.Value+1..] |> String.concat " "
 
     {
         name = name
@@ -126,7 +133,7 @@ let ParseCallableFunction (definitionContext: DefinitionContext) (f: UnparsedCal
         |> Array.map (stringToType definitionContext) 
         |> combineResultsToArray
 
-    let maybeFn = f.fn |> ParseManipulation {definitionContext with values = Array.concat [definitionContext.values; f.args]}
+    let maybeFn = f.fn |> ParseManipulation {definitionContext with functions = Array.concat [definitionContext.functions; f.args]}
 
     match (maybeSignature, maybeFn) with
     | (Ok signature, Ok fn) ->
@@ -141,7 +148,7 @@ let ParseCallableFunction (definitionContext: DefinitionContext) (f: UnparsedCal
 let ParseManipulation (definitionContext: DefinitionContext) (m: UnparsedManipulation) : Result<Manipulation, string> =
     m
     |> Array.map (fun x ->
-        if Array.contains x definitionContext.values then
+        if Array.contains x definitionContext.functions then
             x |> Fn |> Ok
         else if isPrimitive x then
             x |> ToPrimitive |> map Primitive
@@ -168,7 +175,3 @@ let stringToType (definitionContext: DefinitionContext) (s: string) : Result<FnT
     match s with
     | s' when Array.contains s' definitionContext.types -> BaseFnType s' |> Ok
     | _ -> Error ("Unknown type: " + s)
-
-let nameIsValid (name: string) =
-    let invalidChars = " \t\n\r;:()[]{}" |> Seq.toArray
-    not (name |> Seq.exists (fun x -> invalidChars |> Array.contains x))

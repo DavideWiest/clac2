@@ -1,0 +1,28 @@
+        let getFnAndArgs f (m: Manipulation) =
+            let fn = assignmentMap[f]
+
+            let args = m[1..]
+            let args' = if args.Length = fn.signature.Length - 1 then args else args[0..fn.signature.Length - 2]
+            let args'' = 
+                args' 
+                |> Array.choose (fun x -> 
+                    match x with
+                    | Primitive p -> p |> DefinedPrimitive |> Some
+                    | Fn f -> if stdFunctionsMap.ContainsKey f then stdFunctionsMap[f].DefinedFn |> DefinedFn |> Some else None
+                )
+
+                // |> Array.append (m[fn.signature.Length..] |> Fn |> eval)
+
+            Ok (fn, args'')
+
+
+
+    let rec substitute (m: Manipulation) (argsValuePairs: Map<string, DefinedValue>) : Result<DefinedValue array, string> =
+        m
+        |> Array.map (fun x ->
+            match x with
+            | Primitive p -> p |> DefinedPrimitive |> Ok
+            | Fn f -> 
+                if argsValuePairs.ContainsKey f then Ok argsValuePairs[f] else Error ("Function not found: " + f)
+        )
+        |> combineResultsToArray

@@ -54,20 +54,16 @@ let rec eval stdFunctionsMap assignmentMap (startFn: Reference) (args: DefinedVa
 
         let signature = if stdFunctionsMap.ContainsKey f then stdFunctionsMap[f].signature else assignmentMap[f].signature
 
-        let maybeArgs = buildArgs args signature
-
-        match maybeArgs with 
+        match buildArgs args signature with 
         | Error e -> Error e  
         | Ok args ->
-
             if args.Length <> signature.Length - 1 then Error "Incorrect number of arguments" else 
-
             if stdFunctionsMap.ContainsKey f then stdFunctionsMap[f].DefinedFn args else
             
             let fn = assignmentMap[f]
             let substitutions = Map.ofArray (args |> Array.zip fn.args)
 
-            // if the function is a primitive, we have to evaluate it now (via subsitution)
+            // this shouldnt be necessary
             if fn.fn.Length = 1 then substituteOne stdFunctionsMap assignmentMap substitutions fn.fn[0] else
 
             (substituteMany stdFunctionsMap assignmentMap substitutions fn.fn[1..])

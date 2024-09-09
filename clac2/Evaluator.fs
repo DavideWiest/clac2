@@ -65,8 +65,8 @@ let rec eval evalCtx (startFn: Reference) (args: DefinedValue array) =
             let fn = assignmentMap[f]
             let substitutions = Map.ofArray (args |> Array.zip fn.args)
 
-            (substituteMany stdFunctionsMap assignmentMap substitutions fn.fn[1..])
-            |> bind (fun x -> eval stdFunctionsMap assignmentMap fn.fn[0] x)
+            (substituteMany evalCtx substitutions fn.fn[1..])
+            |> bind (fun x -> eval evalCtx fn.fn[0] x)
 
 let toDefinedFn evalCtx f = DefinedFn (evalCtx.stdFunctionsMap[f].name, evalCtx.stdFunctionsMap[f].DefinedFn)
 

@@ -16,8 +16,8 @@ let evaluateAll (stdCtx: StandardContext) (lines: Line array) : Result<DefinedVa
         |> Array.map (fun x -> x.name, x) |> Map.ofArray
         
     let evalCtx = {
-        customAssignmentMap: customAssignmentMap
-        stdFunctionsMap: stdCtx.definedCtx.functions |> Array.map (fun x -> x.name, x) |> Map.ofArray
+        customAssignmentMap = customAssignmentMap
+        stdFunctionsMap = stdCtx.definedCtx.functions |> Array.map (fun x -> x.name, x) |> Map.ofArray
     }
 
     lines 

@@ -2,6 +2,16 @@ module rec Clac2.Domain
 
 // Base
 
+type Program = {
+    loadedFiles: File array
+    localFiles: File array
+}
+
+type File = {
+    location: string
+    lines: Line array
+}
+
 type Line =
     | Expression of Manipulation // will be sent to stdout
     | Assignment of CallableFunction
@@ -20,7 +30,6 @@ type CallableFunction = {
 type Manipulation = Reference array // array of the functions
 
 type Reference =
-    | Primitive of Primitive
     | Fn of string
     // for later 
     // | Manipulation of Manipulation
@@ -50,8 +59,8 @@ type DefinedCallableFunction = {
 }
 
 type DefinedValue =
-    | DefinedFn of string * DefinedFn
     | DefinedPrimitive of Primitive
+    | DefinedFn of string * DefinedFn
 
 type DefinedFn = DefinedValue array -> Result<DefinedValue, string>
 

@@ -27,3 +27,4 @@ C:\Users\DavWi\OneDrive\Desktop\V-ProjektDateien\Projekte\clac2\clac2\obj\Debug\
 C:\Users\DavWi\OneDrive\Desktop\V-ProjektDateien\Projekte\clac2\clac2\obj\Debug\net8.0\clac2.pdb
 C:\Users\DavWi\OneDrive\Desktop\V-ProjektDateien\Projekte\clac2\clac2\obj\Debug\net8.0\clac2.genruntimeconfig.cache
 C:\Users\DavWi\OneDrive\Desktop\V-ProjektDateien\Projekte\clac2\clac2\obj\Debug\net8.0\ref\clac2.dll
+C:\Users\DavWi\OneDrive\Desktop\V-ProjektDateien\Projekte\clac2\clac2\obj\Debug\net8.0\clac2.sourcelink.json

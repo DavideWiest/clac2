@@ -6,6 +6,8 @@
   <ItemGroup>
     <Compile Include="Domain.fs" />
     <Compile Include="Utilities.fs" />
+    <Compile Include="DomainUtilities.fs" />
+    <Compile Include="Language.fs" />
     <Compile Include="FrontEnd.fs" />
     <Compile Include="MiddleEnd.fs" />
     <Compile Include="Evaluator.fs" />

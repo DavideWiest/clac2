@@ -1,0 +1,35 @@
+-- check parsing and assignment syntax validation
+let id x : int int = x
+let y : int = 5
+y
+let w : int = add 5 5
+add 5 5
+add y 5
+add pi e
+-- check parsing that should fail
+-- type int3 : int3
+-- let abc : = 3
+-- let abc2 : int int = 1
+-- let abc3 a : int int int = 3
+
+-- check type checking
+type int2 : int
+type intTwice : int int
+type basicArithmetic : int int int
+type basicArithmetic2 : int2 int2 int2
+
+-- types that should fail
+-- type int5 : int6
+-- type int6 : int5
+-- type int7 : int8
+
+-- manipulations
+id 5
+add 5 5
+add 5 add 5 5
+e
+let plus3 a b c : int int int int = add a add b c
+
+-- manipulations that should fail
+-- add id 5
+-- add id id

@@ -1,0 +1,17 @@
+-- this is a comment
+-- expressions that are not assigned are sent to stdout
+1
+2
+
+-- add two integers
+add 2 1
+
+-- assign a variable
+let a : int = 3
+
+-- define a function
+let add2 num : int int = add 2 num
+
+-- open a module
+open std
+

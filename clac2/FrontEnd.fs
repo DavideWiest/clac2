@@ -2,7 +2,7 @@ module rec Clac2.FrontEnd
 
 open Clac2.Domain
 open Clac2.Utilities
-open System
+open Clac2.Language
 open FSharp.Core.Result
 
 type UnparsedLine =
@@ -29,18 +29,14 @@ type UnparsedTypeDefinition = {
 let parse (standardContext: StandardContext) (input: string) : Result<Line array, string> =
     let defCtx = standardContext.defCtx
 
-    let maybePreParsedLines = 
-        input
-        |> trimSplit [| '\n'; ';' |]
-        |> Array.filter (fun x -> x <> "")
-        |> Array.filter (fun x -> not (x.StartsWith standardContext.commentIdentifier))
-        |> Array.map ToUnparsedLine
-        |> combineResultsToArray
+    input
+    |> trimSplit [| '\n'; ';' |]
+    |> Array.filter (fun x -> x <> "")
+    |> Array.filter (fun x -> not (x.StartsWith standardContext.commentIdentifier))
+    |> Array.map ToUnparsedLine
+    |> combineResultsToArray
 
-    match maybePreParsedLines with
-    | Error e -> Error e
-    | Ok preParsedLines ->
-
+    |> bind (fun preParsedLines ->
         let customTypes = preParsedLines |> Array.choose (fun x -> match x with | UnparsedTypeDefinition t -> Some t.name | _ -> None)
         let customAssignments = preParsedLines |> Array.choose (fun x -> match x with | UnparsedAssignment f -> Some f.name | _ -> None)
         let definitionContext = { 
@@ -56,6 +52,7 @@ let parse (standardContext: StandardContext) (input: string) : Result<Line array
         preParsedLines
         |> Array.map (ParseLine definitionContext)
         |> combineResultsToArray
+    )
 
 let ToUnparsedLine (line: string) : Result<UnparsedLine, string> =
     if line.StartsWith "let " then
@@ -63,7 +60,7 @@ let ToUnparsedLine (line: string) : Result<UnparsedLine, string> =
     else if line.StartsWith "type " then
         line |> ToUnparsedTypeDefinition |> map UnparsedTypeDefinition
     else
-        line |> ToUnparsedManipulation |> map UnparsedExpression
+        line |> ToUnparsedManipulation |> UnparsedExpression |> Ok
 
 let ToUnparsedCallableFunction (line: string) : Result<UnparsedCallableFunction, string> =
     let parts = line |> trimSplit [| ' ' |]
@@ -75,33 +72,28 @@ let ToUnparsedCallableFunction (line: string) : Result<UnparsedCallableFunction,
     if firstColon = -1 || firstEqual = -1 then Error "Assignment missing a colon or an equals." else
     if firstColon > firstEqual then Error "Assignment is missing a colon before the assignment." else
     if firstColon = firstEqual - 1 then Error "Assignment missing type signature between colon and equals." else
+    if parts.Length = firstEqual + 1 then Error "Assignment missing function body." else
 
     let nameAndArgs = parts[1..firstColon-1]
     let name , args = nameAndArgs[0], nameAndArgs[1..]
-    if not (nameIsValid name) then Error ("Invalid function name: " + name) else
+    if Syntax.nameIsInvalid name then Error ("Invalid function name: " + name) else
     let signatureParts = parts[firstColon+1..firstEqual-1]
     if (signatureParts |> Array.length) - 1 <> (args |> Array.length) then Error "Function signature does not match number of arguments." else
-    if args |> Array.map nameIsValid |> Array.exists (id >> not) then Error "Invalid argument name." else
+    if args |> Array.map Syntax.nameIsInvalid |> Array.exists id then Error "Invalid argument name." else
 
     let signature = signatureParts |> String.concat " "
-    let maybeFnBody = parts[firstEqual+1..] |> String.concat " " |> ToUnparsedManipulation
-    
-    match maybeFnBody with
-    | Error e -> Error ("Error parsing function body: " + e)
-    | Ok fnBody ->
-        {
-            name = name
-            unparsedSignature = signature
-            args = args
-            fn = fnBody
-        } 
-        |> Ok
+    let fnBody = parts[firstEqual+1..] |> String.concat " " |> ToUnparsedManipulation
+
+    {
+        name = name
+        unparsedSignature = signature
+        args = args
+        fn = fnBody
+    } 
+    |> Ok
 
 // does not support precedence/nesting
-let ToUnparsedManipulation (line: string) : Result<UnparsedManipulation, string> =
-    let parts = line |> trimSplit [| ' ' |]
-    
-    parts |> Ok
+let ToUnparsedManipulation (line: string) = line |> trimSplit [| ' ' |]
 
 let ToUnparsedTypeDefinition (line: string) : Result<UnparsedTypeDefinition, string> =
     let parts = line |> trimSplit [| ' ' |]
@@ -111,14 +103,15 @@ let ToUnparsedTypeDefinition (line: string) : Result<UnparsedTypeDefinition, str
     if maybeFirstColon = None then Error "Type definition missing a colon separated by spaces." else
 
     let name = parts[1]
-    if not (nameIsValid name) then Error ("Invalid type name: " + name) else
+    if Syntax.nameIsInvalid name then Error ("Invalid type name: " + name) else
 
     let signature = parts[maybeFirstColon.Value+1..] |> String.concat " "
 
     {
         name = name
         unparsedSignature = signature
-    } |> Ok
+    } 
+    |> Ok
 
 let ParseLine (definitionContext: DefinitionContext) (line: UnparsedLine) : Result<Line, string> =
     match line with
@@ -148,21 +141,12 @@ let ParseCallableFunction (definitionContext: DefinitionContext) (f: UnparsedCal
 let ParseManipulation (definitionContext: DefinitionContext) (m: UnparsedManipulation) : Result<Manipulation, string> =
     m
     |> Array.map (fun x ->
-        if Array.contains x definitionContext.functions then
+        if Array.contains x definitionContext.functions || isPrimitive x then
             x |> Fn |> Ok
-        else if isPrimitive x then
-            x |> ToPrimitive |> map Primitive
         else
             Error ("Unknown function: " + x)
     )
     |> combineResultsToArray
-
-let isPrimitive (s: string) =
-    s 
-    |> Seq.forall (fun x -> Char.IsDigit x) // for later: || x = '.')
-
-let ToPrimitive (s: string) =
-    s |> int |> PrimitiveInt |> Ok
 
 let ParseTypeDefinition (definitionContext: DefinitionContext) (t: UnparsedTypeDefinition) : Result<TypeDefinition, string> =
     t.unparsedSignature 

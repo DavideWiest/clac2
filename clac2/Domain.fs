@@ -1,10 +1,15 @@
 module rec Clac2.Domain
 
-// Base
+// Files
+
+type MainFileUnparsed = 
+    | Interactive of string
+    | File of string
 
 type Program = {
-    loadedFiles: File array
-    localFiles: File array
+    mainFile: MainFile
+    otherLocalFiles: File array
+    standardFiles: File array
 }
 
 type File = {
@@ -12,10 +17,33 @@ type File = {
     lines: Line array
 }
 
+type MainFile = {
+    maybeLocation: string option
+    lines: Line array
+}
+
+// Program
+
 type Line =
     | Expression of Manipulation // will be sent to stdout
     | Assignment of CallableFunction
     | TypeDefinition of TypeDefinition
+    // for later
+    | ModuleReference of string
+
+type OrderedFile = {
+    moduleName: WithLine<string> option
+    expressions: WithLine<Manipulation> array
+    assignments: WithLine<CallableFunction> array
+    typeDefinitions: WithLine<TypeDefinition> array
+}
+
+type WithLine<'a> = {
+    line: Line
+    value: 'a
+}
+
+// Language
 
 type CallableFunction = {
     name: string
@@ -26,7 +54,6 @@ type CallableFunction = {
     fn: Manipulation
 }
 
-// unnormalized manipulation 
 type Manipulation = Reference array // array of the functions
 
 type Reference =
@@ -67,12 +94,12 @@ type DefinedFn = DefinedValue array -> Result<DefinedValue, string>
 // Context
 
 type StandardContext = {
-    defCtx: DefinitionContext
+    defCtx: DefinedSymbols
     definedCtx: DefinedContext
     commentIdentifier: string
 }
 
-type DefinitionContext = {
+type DefinedSymbols = {
     types: string array
     functions: string array
 }
@@ -80,3 +107,22 @@ type DefinitionContext = {
 type DefinedContext = {
     functions: DefinedCallableFunction array
 }
+
+// Errors 
+
+type Trace = {
+    exc: GenericException
+    trace: ExceptionLocation list
+}
+
+type GenericException = {
+    message: string
+    exceptionLocation: ExceptionLocation
+}
+
+type ExceptionLocation = {
+    location: string option
+    line: int
+}
+
+type ClacResult<'a> = Result<'a, GenericException>

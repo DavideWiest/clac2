@@ -1,32 +1,21 @@
 ﻿
 open Clac2.Utilities
-open Clac2.FrontEnd
+open Clac2.Modularization
 open Clac2.MiddleEnd
 open Clac2.Evaluator
 open FSharp.Core.Result
 open Clac2.Language
 
 [<EntryPoint>]
-let main (args) =
+let main args =
     let baseFuncsCombined = Array.concat [BuildIn.baseFuncs; BuildIn.baseVars]
     let stdCtx = StandardContext.buildStandardContext baseFuncsCombined Types.supportedTypes Syntax.commentIdentifer
 
-    getInput args
-    |> parse stdCtx
-    |> (fun x ->
-        match x with 
-        | Ok lines ->
-            printfn "\nParsed:\n"
-            lines
-            |> Array.map lineToString
-            |> Array.iter (printfn "%s")
-            printfn "\n---------\n"
-        | Error e -> ()
-
-        x
-    )
-    |> bind (TypeChecking.validateTypes stdCtx)
-    |> bind (fun lines -> lines |> evaluateLines stdCtx |> combineResultsToArray)
+    args
+    |> getInput
+    |> FileLoading.loadAndParseFiles stdCtx
+    |> bind (TypeChecking.checkTypes stdCtx)
+    |> bind (fun program -> program.mainFile.lines |> evaluateLines stdCtx |> combineResultsToArray) // consider other files too here
     |> (fun x ->
         match x with 
         | Ok results ->
@@ -39,3 +28,4 @@ let main (args) =
         x
     )
     |> resultToReturnCode
+

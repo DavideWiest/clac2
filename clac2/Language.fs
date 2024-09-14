@@ -18,6 +18,10 @@ module Types =
     let intType = BaseFnType "int"
     let floatType = BaseFnType "float"
 
+module Files =
+    let officialExtensions = [| "clac" |]
+    let standardFileLocations = [| "scripts/Standard.clac" |]
+
 module BuildIn =
     let baseVars = 
         [|
@@ -39,12 +43,6 @@ module BuildIn =
         |> Array.map (fun (k, f) -> k, fun input -> Array.reduce f input)
         |> Array.map (fun (k, f) -> k, fun input -> Conversion.fnTypeToIntAdapter f input 2)
         |> Array.map (Conversion.fSharpFunctionToFn basicArithmeticArgsAndSignature Types.intType)
-
-module Modularization =
-    let loadModules modules =
-        modules
-        |> Array.map System.IO.File.ReadAllText
-        |> String.concat "\n"
 
 module StandardContext =
     let buildStandardContext (baseFuncs: DefinedCallableFunction array) (supportedTypes: string array) commentIdentifier =

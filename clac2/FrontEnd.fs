@@ -113,13 +113,13 @@ let ToUnparsedTypeDefinition (line: string) : Result<UnparsedTypeDefinition, str
     } 
     |> Ok
 
-let ParseLine (definitionContext: DefinitionContext) (line: UnparsedLine) : Result<Line, string> =
+let ParseLine (definitionContext: DefinedSymbols) (line: UnparsedLine) : Result<Line, string> =
     match line with
     | UnparsedExpression m -> m |> ParseManipulation definitionContext |> map Expression
     | UnparsedAssignment f -> f |> ParseCallableFunction definitionContext |> map Assignment
     | UnparsedTypeDefinition t -> t |> ParseTypeDefinition definitionContext |> map TypeDefinition
 
-let ParseCallableFunction (definitionContext: DefinitionContext) (f: UnparsedCallableFunction) : Result<CallableFunction, string> =
+let ParseCallableFunction (definitionContext: DefinedSymbols) (f: UnparsedCallableFunction) : Result<CallableFunction, string> =
     let maybeSignature = 
         f.unparsedSignature 
         |> trimSplit [| ' ' |] 
@@ -138,7 +138,7 @@ let ParseCallableFunction (definitionContext: DefinitionContext) (f: UnparsedCal
         } |> Ok
     | errTuple -> Error (errTuple |> joinErrorTuple |> sprintf "Error parsing function: %s")
 
-let ParseManipulation (definitionContext: DefinitionContext) (m: UnparsedManipulation) : Result<Manipulation, string> =
+let ParseManipulation (definitionContext: DefinedSymbols) (m: UnparsedManipulation) : Result<Manipulation, string> =
     m
     |> Array.map (fun x ->
         if Array.contains x definitionContext.functions || isPrimitive x then
@@ -148,14 +148,14 @@ let ParseManipulation (definitionContext: DefinitionContext) (m: UnparsedManipul
     )
     |> combineResultsToArray
 
-let ParseTypeDefinition (definitionContext: DefinitionContext) (t: UnparsedTypeDefinition) : Result<TypeDefinition, string> =
+let ParseTypeDefinition (definitionContext: DefinedSymbols) (t: UnparsedTypeDefinition) : Result<TypeDefinition, string> =
     t.unparsedSignature 
     |> trimSplit [| ' ' |] 
     |> Array.map (stringToType definitionContext) 
     |> combineResultsToArray
     |> map (fun signature -> { name = t.name; signature = signature })
 
-let stringToType (definitionContext: DefinitionContext) (s: string) : Result<FnType, string> =
+let stringToType (definitionContext: DefinedSymbols) (s: string) : Result<FnType, string> =
     match s with
     | s' when Array.contains s' definitionContext.types -> BaseFnType s' |> Ok
     | _ -> Error ("Unknown type: " + s)

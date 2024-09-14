@@ -21,9 +21,9 @@ let getValues (m: Map<'a, 'b>) =
 let getInput (args: string array) =
     if args.Length = 0 then
         printf "Enter the program:\n"
-        Console.ReadLine()
+        Interactive (Console.ReadLine())
     else
-        System.IO.File.ReadAllText args[0]
+        File args[0]
 
 let stringIsEmpty (s: string) =
     s.Trim().Length = 0

@@ -47,13 +47,13 @@ let combineResults (results: Result<'a, 'b> seq) =
 
 let combineResultsToArray result = result |> combineResults |> map Array.ofList
 
-let joinErrorTuple (results: Result<'a, string> * Result<'b, string>) = 
+let joinErrorTuple (results: Result<'a, GenericException> * Result<'b, GenericException>) = 
     match results with
     | Error e, Ok _ -> e
     | Ok _, Error e -> e
-    | Error e1, Error e2 ->(e1 + "\n" + e2)
-    | _ -> "Misused joinErrorTuple: both results are Ok"
-
+    | Error e1, Error e2 -> { message = e1.message + "\n\n" + "Another error occured." }
+    | _ -> failwith "Misused joinErrorTuple: both results are Ok"
+    
 // Array
 
 let hasDuplicatesBy (arr: 'a array) (f: 'a -> 'b) =

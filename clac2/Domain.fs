@@ -117,12 +117,13 @@ type Trace = {
 
 type GenericException = {
     message: string
-    exceptionLocation: ExceptionLocation
+    // exceptionLocation: ExceptionLocation
 }
 
 type ExceptionLocation = {
-    location: string option
-    line: int
+    //location: string option
+    //line: int
+    placeholder: int
 }
 
 type ClacResult<'a> = Result<'a, GenericException>

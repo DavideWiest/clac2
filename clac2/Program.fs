@@ -1,7 +1,7 @@
 ﻿
 open Clac2.Utilities
+open Clac2.DomainUtilities
 open Clac2.Modularization
-open Clac2.MiddleEnd
 open Clac2.Evaluator
 open FSharp.Core.Result
 open Clac2.Language
@@ -22,9 +22,7 @@ let main args =
             printfn "Evaluated:\n"
             results |> Array.iter (printfn "%A")
 
-        | Error e ->
-            printfn "Error:\n%s" e
-
+        | Error e -> printClacError e
         x
     )
     |> resultToReturnCode

@@ -2,6 +2,7 @@ module rec Clac2.Modularization
 
 open Clac2.Domain
 open Clac2.Utilities
+open Clac2.DomainUtilities
 open Clac2.FrontEnd
 open Clac2.MiddleEnd
 open FSharp.Core.Result
@@ -25,7 +26,7 @@ module FileLoading =
             { mainFile = mainFile; otherLocalFiles = otherFiles; standardFiles = stdFiles }
         )
 
-    let loadStandardFiles stdCtx : Result<File array, string> =
+    let loadStandardFiles stdCtx : ClacResult<File array> =
         Files.standardFileLocations 
         |> Array.map (fun fileLoc ->
             fileLoc
@@ -35,7 +36,7 @@ module FileLoading =
         )
         |> combineResultsToArray
 
-    let loadOtherFiles stdCtx (mainFile: MainFile) : Result<File array, string> =
+    let loadOtherFiles stdCtx (mainFile: MainFile) : ClacResult<File array> =
         match mainFile.maybeLocation with
         | None -> Ok [||]
         | Some fileLoc ->
@@ -58,7 +59,7 @@ module FileLoading =
         System.IO.Directory.GetFiles dir
         |> Array.filter (fun x -> extensionValid x && x <> fileLoc && fileIsReferenced x)
 
-    let loadMainFile stdCtx mainFile =
+    let loadMainFile stdCtx mainFile : ClacResult<MainFile> =
         match mainFile with
         | Interactive s -> 
             s
@@ -70,16 +71,16 @@ module FileLoading =
             |> bind (parse stdCtx)
             |> map (fun lines -> { maybeLocation = Some file; lines = lines })
 
-    let tryReadFile file =
+    let tryReadFile file : ClacResult<string> =
         try
             Ok (System.IO.File.ReadAllText file)
         with
-        | :? System.IO.FileNotFoundException as e -> Error (sprintf "File not found: %s" file)
-        | e -> Error (sprintf "Error reading file: %s" file)
+        | :? System.IO.FileNotFoundException as e -> ClacError (sprintf "File not found: %s" file)
+        | e -> ClacError (sprintf "Error reading file \"%s\": %s" file (e.ToString()))
 
 module TypeChecking = 
 
-    let checkTypes stdCtx (program: Program) : Result<Program, string> =
+    let checkTypes stdCtx (program: Program) : ClacResult<Program> =
         program.mainFile.lines
         |> (TypeChecking.validateTypes stdCtx)
         |> bind (fun _ -> 

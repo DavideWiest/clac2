@@ -2,15 +2,15 @@ module rec Clac2.MiddleEnd
 
 open Clac2.Domain
 open Clac2.Utilities
-
+open Clac2.DomainUtilities
 
 module TypeChecking =
-    let validateTypes (stdCtx: StandardContext) (lines: Line array) =
+    let validateTypes (stdCtx: StandardContext) (lines: Line array): ClacResult<Line array> =
         match checkTypesInner stdCtx lines with
         | None -> Ok lines
         | Some e -> Error e
 
-    let checkTypesInner (stdCtx: StandardContext) (lines: Line array) = 
+    let checkTypesInner (stdCtx: StandardContext) (lines: Line array) : GenericException option = 
         // check types, then manipulations, then assignemtns
 
         let customTypes = lines |> Array.choose (fun x -> match x with | TypeDefinition t -> Some t | _ -> None)
@@ -29,9 +29,9 @@ module TypeChecking =
         |> Option.orElse (checkManipulations manipulations functionSignatureMap)
         |> Option.orElse (checkAssignments functionSignatureMap customAssignments) 
 
-    let checkTypeDefinitions (stdCtx: StandardContext) customTypes customTypeMap : string option =    
+    let checkTypeDefinitions (stdCtx: StandardContext) customTypes customTypeMap : GenericException option =    
         // no recursive type definitions - type system is a tree
-        let rec checkType (customTypeMap: Map<string,TypeDefinition>) (typesHigherUp: string list) (x: TypeDefinition) =
+        let rec checkTypeDefsInner (customTypeMap: Map<string,TypeDefinition>) (typesHigherUp: string list) (x: TypeDefinition) =
             let rec flattenSignature (x: FnType) =
                 match x with
                 | BaseFnType s -> [| s |]
@@ -46,19 +46,19 @@ module TypeChecking =
                 // ignore base types
                 if Array.contains x stdCtx.defCtx.types then None else
 
-                if List.contains x typesHigherUp' then Some ("Recursive type definition: " + x) else 
-                if Map.containsKey x customTypeMap |> not then Some ("Type not defined: " + x) else
+                if List.contains x typesHigherUp' then Some(genericExc ("Recursive type definition: " + x)) else 
+                if Map.containsKey x customTypeMap |> not then Some(genericExc("Type not defined: " + x)) else
 
-                checkType customTypeMap typesHigherUp' customTypeMap[x]
+                checkTypeDefsInner customTypeMap typesHigherUp' customTypeMap[x]
             )
         
-        Array.tryPick (checkType customTypeMap []) customTypes
+        Array.tryPick (checkTypeDefsInner customTypeMap []) customTypes
 
-    let checkManipulations manipulations functionSignatureMap : string option =
+    let checkManipulations manipulations functionSignatureMap : GenericException option =
         let typesMatch inputSignature args f =
             args
             |> Array.zip inputSignature
-            |> Array.tryPick (fun (x, y) -> if x = y then None else Some (sprintf "Argument type mismatch: Expected %A, but got %A for function %s." x y f))
+            |> Array.tryPick (fun (x, y) -> if x = y then None else Some (genericExc(sprintf "Argument type mismatch: Expected %A, but got %A for function %s." x y f)))
 
         let rec checkManipulation (m: Reference array) = 
             match m[0] with
@@ -67,7 +67,7 @@ module TypeChecking =
 
                 let signature = functionSignatureMap[f]
                 let inputSignature= signature[..signature.Length-2]
-                if inputSignature.Length > m.Length - 1 then Some ("Too few arguments for function: " + f) else
+                if inputSignature.Length > m.Length - 1 then Some (genericExc("Too few arguments for function: " + f)) else
 
                 let args = m[1..inputSignature.Length]
                 let typesOfArgs = args |> Array.map (ReferenceToFnType functionSignatureMap)
@@ -75,7 +75,7 @@ module TypeChecking =
                 if m.Length - 1 = inputSignature.Length then typesMatch inputSignature typesOfArgs f else
 
                 // prevent Array.last from throwing exception
-                if inputSignature.Length = 0 then Some ("Too many arguments for function " + f) else
+                if inputSignature.Length = 0 then Some (genericExc("Too many arguments for function " + f)) else
 
                 // check the other types
                 let typesUntilLastMatch = typesMatch inputSignature[..inputSignature.Length-2] typesOfArgs[..typesOfArgs.Length-2] f
@@ -90,13 +90,13 @@ module TypeChecking =
                     let lastInputType = inputSignature |> Array.last
                     let outputSignature' = functionSignatureMap[f'] |> Array.last
 
-                    if lastInputType <> outputSignature' then Some (sprintf "Argument type mismatch: Expected %A, but got %A. Trying to push superfluous arguments of function %s to last element." lastInputType outputSignature' f) else
+                    if lastInputType <> outputSignature' then Some(genericExc(sprintf "Argument type mismatch: Expected %A, but got %A. Trying to push superfluous arguments of function %s to last element." lastInputType outputSignature' f)) else
 
                     checkManipulation m[inputSignature.Length..]
 
         Array.tryPick checkManipulation manipulations
 
-    let checkAssignments functionSignatureMap customAssignments : string option =
+    let checkAssignments functionSignatureMap customAssignments : GenericException option =
         let checkAssignment (assignment: CallableFunction) =
             let argumentsAsAssignments = 
                 assignment.args 

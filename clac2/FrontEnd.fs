@@ -3,6 +3,7 @@ module rec Clac2.FrontEnd
 open Clac2.Domain
 open Clac2.Utilities
 open Clac2.Language
+open Clac2.DomainUtilities
 open FSharp.Core.Result
 
 type UnparsedLine =
@@ -26,7 +27,7 @@ type UnparsedTypeDefinition = {
     unparsedSignature: string
 }
 
-let parse (standardContext: StandardContext) (input: string) : Result<Line array, string> =
+let parse (standardContext: StandardContext) (input: string) : ClacResult<Line array> =
     let defCtx = standardContext.defCtx
 
     input
@@ -44,17 +45,17 @@ let parse (standardContext: StandardContext) (input: string) : Result<Line array
         }
         
         let maybeFunctionDuplicates = hasDuplicatesByReturning definitionContext.functions id
-        if maybeFunctionDuplicates.Length > 0 then Error ("Duplicate function definitions: " + (maybeFunctionDuplicates |> String.concat ", ")) else
+        if maybeFunctionDuplicates.Length > 0 then ClacError ("Duplicate function definitions: " + (maybeFunctionDuplicates |> String.concat ", ")) else
 
         let maybeTypeDuplicates = hasDuplicatesByReturning definitionContext.types id
-        if maybeTypeDuplicates.Length > 0 then Error ("Duplicate type definitions: " + (maybeTypeDuplicates |> String.concat ", ")) else
+        if maybeTypeDuplicates.Length > 0 then ClacError ("Duplicate type definitions: " + (maybeTypeDuplicates |> String.concat ", ")) else
 
         preParsedLines
         |> Array.map (ParseLine definitionContext)
         |> combineResultsToArray
     )
 
-let ToUnparsedLine (line: string) : Result<UnparsedLine, string> =
+let ToUnparsedLine (line: string) : ClacResult<UnparsedLine> =
     if line.StartsWith "let " then
         line |> ToUnparsedCallableFunction |> map UnparsedAssignment
     else if line.StartsWith "type " then
@@ -62,24 +63,24 @@ let ToUnparsedLine (line: string) : Result<UnparsedLine, string> =
     else
         line |> ToUnparsedManipulation |> UnparsedExpression |> Ok
 
-let ToUnparsedCallableFunction (line: string) : Result<UnparsedCallableFunction, string> =
+let ToUnparsedCallableFunction (line: string) : ClacResult<UnparsedCallableFunction> =
     let parts = line |> trimSplit [| ' ' |]
-    if parts.Length < 6 then Error "Assignment missing parts. Missing space?" else
+    if parts.Length < 6 then ClacError "Assignment missing parts. Missing space?" else
 
     let firstColon = parts |> Array.findIndex (fun x -> x = ":")
     let firstEqual = parts |> Array.findIndex (fun x -> x = "=")
 
-    if firstColon = -1 || firstEqual = -1 then Error "Assignment missing a colon or an equals." else
-    if firstColon > firstEqual then Error "Assignment is missing a colon before the assignment." else
-    if firstColon = firstEqual - 1 then Error "Assignment missing type signature between colon and equals." else
-    if parts.Length = firstEqual + 1 then Error "Assignment missing function body." else
+    if firstColon = -1 || firstEqual = -1 then ClacError "Assignment missing a colon or an equals." else
+    if firstColon > firstEqual then ClacError "Assignment is missing a colon before the assignment." else
+    if firstColon = firstEqual - 1 then ClacError "Assignment missing type signature between colon and equals." else
+    if parts.Length = firstEqual + 1 then ClacError "Assignment missing function body." else
 
     let nameAndArgs = parts[1..firstColon-1]
     let name , args = nameAndArgs[0], nameAndArgs[1..]
-    if Syntax.nameIsInvalid name then Error ("Invalid function name: " + name) else
+    if Syntax.nameIsInvalid name then ClacError ("Invalid function name: " + name) else
     let signatureParts = parts[firstColon+1..firstEqual-1]
-    if (signatureParts |> Array.length) - 1 <> (args |> Array.length) then Error "Function signature does not match number of arguments." else
-    if args |> Array.map Syntax.nameIsInvalid |> Array.exists id then Error "Invalid argument name." else
+    if (signatureParts |> Array.length) - 1 <> (args |> Array.length) then ClacError "Function signature does not match number of arguments." else
+    if args |> Array.map Syntax.nameIsInvalid |> Array.exists id then ClacError "Invalid argument name." else
 
     let signature = signatureParts |> String.concat " "
     let fnBody = parts[firstEqual+1..] |> String.concat " " |> ToUnparsedManipulation
@@ -95,15 +96,15 @@ let ToUnparsedCallableFunction (line: string) : Result<UnparsedCallableFunction,
 // does not support precedence/nesting
 let ToUnparsedManipulation (line: string) = line |> trimSplit [| ' ' |]
 
-let ToUnparsedTypeDefinition (line: string) : Result<UnparsedTypeDefinition, string> =
+let ToUnparsedTypeDefinition (line: string) : ClacResult<UnparsedTypeDefinition> =
     let parts = line |> trimSplit [| ' ' |]
-    if parts.Length < 3 then Error "Type definition missing parts. Missing space?" else
+    if parts.Length < 3 then ClacError "Type definition missing parts. Missing space?" else
 
     let maybeFirstColon = parts |> Array.tryFindIndex (fun x -> x = ":")
-    if maybeFirstColon = None then Error "Type definition missing a colon separated by spaces." else
+    if maybeFirstColon = None then ClacError "Type definition missing a colon separated by spaces." else
 
     let name = parts[1]
-    if Syntax.nameIsInvalid name then Error ("Invalid type name: " + name) else
+    if Syntax.nameIsInvalid name then ClacError ("Invalid type name: " + name) else
 
     let signature = parts[maybeFirstColon.Value+1..] |> String.concat " "
 
@@ -113,18 +114,18 @@ let ToUnparsedTypeDefinition (line: string) : Result<UnparsedTypeDefinition, str
     } 
     |> Ok
 
-let ParseLine (definitionContext: DefinedSymbols) (line: UnparsedLine) : Result<Line, string> =
+let ParseLine (definitionContext: DefinedSymbols) (line: UnparsedLine) : ClacResult<Line> =
     match line with
     | UnparsedExpression m -> m |> ParseManipulation definitionContext |> map Expression
     | UnparsedAssignment f -> f |> ParseCallableFunction definitionContext |> map Assignment
     | UnparsedTypeDefinition t -> t |> ParseTypeDefinition definitionContext |> map TypeDefinition
 
-let ParseCallableFunction (definitionContext: DefinedSymbols) (f: UnparsedCallableFunction) : Result<CallableFunction, string> =
+let ParseCallableFunction (definitionContext: DefinedSymbols) (f: UnparsedCallableFunction) : ClacResult<CallableFunction> =
     let maybeSignature = 
         f.unparsedSignature 
         |> trimSplit [| ' ' |] 
         |> Array.map (stringToType definitionContext) 
-        |> combineResultsToArray
+        |> combineClacResultsToArray 
 
     let maybeFn = f.fn |> ParseManipulation {definitionContext with functions = Array.concat [definitionContext.functions; f.args]}
 
@@ -136,26 +137,26 @@ let ParseCallableFunction (definitionContext: DefinedSymbols) (f: UnparsedCallab
             args = f.args
             fn = fn
         } |> Ok
-    | errTuple -> Error (errTuple |> joinErrorTuple |> sprintf "Error parsing function: %s")
+    | errTuple -> errTuple |> joinErrorTuple |> Error
 
-let ParseManipulation (definitionContext: DefinedSymbols) (m: UnparsedManipulation) : Result<Manipulation, string> =
+let ParseManipulation (definitionContext: DefinedSymbols) (m: UnparsedManipulation) : ClacResult<Manipulation> =
     m
     |> Array.map (fun x ->
         if Array.contains x definitionContext.functions || isPrimitive x then
             x |> Fn |> Ok
         else
-            Error ("Unknown function: " + x)
+            ClacError ("Unknown function: " + x)
     )
-    |> combineResultsToArray
+    |> combineClacResultsToArray
 
-let ParseTypeDefinition (definitionContext: DefinedSymbols) (t: UnparsedTypeDefinition) : Result<TypeDefinition, string> =
+let ParseTypeDefinition (definitionContext: DefinedSymbols) (t: UnparsedTypeDefinition) : ClacResult<TypeDefinition> =
     t.unparsedSignature 
     |> trimSplit [| ' ' |] 
     |> Array.map (stringToType definitionContext) 
-    |> combineResultsToArray
+    |> combineClacResultsToArray
     |> map (fun signature -> { name = t.name; signature = signature })
 
-let stringToType (definitionContext: DefinedSymbols) (s: string) : Result<FnType, string> =
+let stringToType (definitionContext: DefinedSymbols) (s: string) : ClacResult<FnType> =
     match s with
-    | s' when Array.contains s' definitionContext.types -> BaseFnType s' |> Ok
-    | _ -> Error ("Unknown type: " + s)
+    | s' when Array.contains s' definitionContext.types -> BaseFnType s' |> Ok |> toClacResult
+    | _ -> ClacError ("Unknown type: " + s)

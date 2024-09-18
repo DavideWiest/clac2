@@ -32,16 +32,18 @@ type Line =
     | ModuleReference of string
 
 type OrderedFile = {
-    moduleName: WithLine<string> option
-    expressions: WithLine<Manipulation> array
-    assignments: WithLine<CallableFunction> array
-    typeDefinitions: WithLine<TypeDefinition> array
+    moduleName: LineAnnotated<string> option
+    expressions: LineAnnotatedArray<Manipulation>
+    assignments: LineAnnotatedArray<CallableFunction>
+    typeDefinitions: LineAnnotatedArray<TypeDefinition>
 }
 
-type WithLine<'a> = {
+type LineAnnotated<'a> = {
     line: Line
     value: 'a
 }
+
+type LineAnnotatedArray<'a> = LineAnnotated<'a> array
 
 // Language
 
@@ -110,14 +112,25 @@ type DefinedContext = {
 
 // Errors 
 
-type Trace = {
-    exc: GenericException
-    trace: ExceptionLocation list
-}
 
 type GenericException = {
     message: string
-    // exceptionLocation: ExceptionLocation
+}
+
+type ClacResult<'a> = Result<'a, GenericException>
+
+type FullGenericException = {
+    genExc: GenericException
+    location: string option
+}
+
+type FullClacResult<'a> = Result<'a, FullGenericException>
+
+// for later
+
+type Trace = {
+    exc: GenericException
+    trace: ExceptionLocation list
 }
 
 type ExceptionLocation = {
@@ -125,5 +138,3 @@ type ExceptionLocation = {
     //line: int
     placeholder: int
 }
-
-type ClacResult<'a> = Result<'a, GenericException>

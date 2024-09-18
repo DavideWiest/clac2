@@ -10,7 +10,7 @@ open Clac2.Language
 
 module FileLoading =
 
-    let loadAndParseFiles stdCtx (unparsedMainFile: MainFileUnparsed) =
+    let loadAndParseFiles stdCtx (unparsedMainFile: MainFileUnparsed) : FullClacResult<Program> =
         loadStandardFiles stdCtx
         |> bind (fun (stdFiles: File array) -> 
             unparsedMainFile
@@ -26,17 +26,18 @@ module FileLoading =
             { mainFile = mainFile; otherLocalFiles = otherFiles; standardFiles = stdFiles }
         )
 
-    let loadStandardFiles stdCtx : ClacResult<File array> =
+    let loadStandardFiles stdCtx : FullClacResult<File array> =
         Files.standardFileLocations 
         |> Array.map (fun fileLoc ->
             fileLoc
             |> tryReadFile
             |> bind (parse stdCtx)
             |> map (fun lines -> { location = fileLoc; lines = lines })
+            |> toFullGenericExc (Some fileLoc)
         )
         |> combineResultsToArray
 
-    let loadOtherFiles stdCtx (mainFile: MainFile) : ClacResult<File array> =
+    let loadOtherFiles stdCtx (mainFile: MainFile) : FullClacResult<File array> =
         match mainFile.maybeLocation with
         | None -> Ok [||]
         | Some fileLoc ->
@@ -46,6 +47,7 @@ module FileLoading =
                 |> tryReadFile
                 |> bind (parse stdCtx)
                 |> map (fun lines -> { location = fileLoc; lines = lines })
+                |> toFullGenericExc (Some fileLoc)
             )
             |> combineResultsToArray
 
@@ -59,17 +61,19 @@ module FileLoading =
         System.IO.Directory.GetFiles dir
         |> Array.filter (fun x -> extensionValid x && x <> fileLoc && fileIsReferenced x)
 
-    let loadMainFile stdCtx mainFile : ClacResult<MainFile> =
+    let loadMainFile stdCtx mainFile : FullClacResult<MainFile> =
         match mainFile with
         | Interactive s -> 
             s
             |> parse stdCtx
             |> map (fun lines -> { maybeLocation = None; lines = lines })
+            |> toFullGenericExc None
         | File file -> 
             file
             |> tryReadFile
             |> bind (parse stdCtx)
             |> map (fun lines -> { maybeLocation = Some file; lines = lines })
+            |> toFullGenericExc (Some file)
 
     let tryReadFile file : ClacResult<string> =
         try
@@ -80,19 +84,17 @@ module FileLoading =
 
 module TypeChecking = 
 
-    let checkTypes stdCtx (program: Program) : ClacResult<Program> =
+    let checkTypes stdCtx (program: Program) : FullClacResult<Program> =
+        let validateFileArray (fileArr: File array) =
+            fileArr
+            |> Array.map (fun file -> file.location, file.lines)
+            |> Array.map (fun (loc, lines) -> Some loc, lines |> TypeChecking.validateTypes stdCtx)
+            |> Array.map tupledToFullGenericExc
+            |> combineResultsToArray
+        
         program.mainFile.lines
         |> (TypeChecking.validateTypes stdCtx)
-        |> bind (fun _ -> 
-            program.otherLocalFiles
-            |> Array.map (fun file -> file.lines)
-            |> Array.map (TypeChecking.validateTypes stdCtx)
-            |> combineResultsToArray
-        )
-        |> bind (fun _ -> 
-            program.standardFiles
-            |> Array.map (fun file -> file.lines)
-            |> Array.map (TypeChecking.validateTypes stdCtx)
-            |> combineResultsToArray
-        )
+        |> toFullGenericExc program.mainFile.maybeLocation
+        |> bind (fun _ -> validateFileArray program.otherLocalFiles)
+        |> bind (fun _ -> validateFileArray program.standardFiles)
         |> map (fun _ -> program)

@@ -1,6 +1,7 @@
 module rec Clac2.DomainUtilities 
 
 open Clac2.Domain
+open FSharp.Core.Result
 
 type EvalCtx = {
     customAssignmentMap: Map<string, CallableFunction>
@@ -46,10 +47,22 @@ let combineClacResultsToArray (results: ClacResult<'a> seq) : ClacResult<'a arra
         | Error e -> Error e
     ) (Ok [| |])
 
-let clacMap f result =
-    match result with
-    | Ok v -> toClacResult(f v)
-    | Error e -> Error e
-
 let printClacError e =
     printfn "%s" e.message
+
+let tupledToFullGenericExc (result: string option * ClacResult<'a>) : FullClacResult<'a> = 
+    let (location, err) = result
+    toFullGenericExc location err
+
+let toFullGenericExc (location: string option) (result: ClacResult<'a>) : FullClacResult<'a> =
+    result
+    |> mapError (fun e -> fullGenericExc location e)
+
+let fullGenericExc (location: string option) (genericExc: GenericException) =
+    { genExc = genericExc; location = location }
+
+let printFullClacError (e: FullGenericException) =
+    printfn "Error occured in %s:" (if e.location.IsSome then e.location.Value else "unknown file location (interactive?)")
+    printClacError e.genExc 
+
+let FullClacError (e: string) (location: string option) = e |> genericExc |> fullGenericExc location |> Error

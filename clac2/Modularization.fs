@@ -31,7 +31,7 @@ module FileLoading =
         |> Array.map (fun fileLoc ->
             fileLoc
             |> tryReadFile
-            |> bind (parse stdCtx)
+            |> bind (parse (Some fileLoc) stdCtx)
             |> map (fun lines -> { location = fileLoc; lines = lines })
             |> toFullGenericExc (Some fileLoc)
         )
@@ -43,9 +43,9 @@ module FileLoading =
         | Some fileLoc ->
             findOtherClacFiles mainFile.lines fileLoc
             |> Array.map (fun fileLoc -> 
-                fileLoc 
+                fileLoc
                 |> tryReadFile
-                |> bind (parse stdCtx)
+                |> bind (parse (Some fileLoc) stdCtx)
                 |> map (fun lines -> { location = fileLoc; lines = lines })
                 |> toFullGenericExc (Some fileLoc)
             )
@@ -65,13 +65,13 @@ module FileLoading =
         match mainFile with
         | Interactive s -> 
             s
-            |> parse stdCtx
+            |> parse None stdCtx
             |> map (fun lines -> { maybeLocation = None; lines = lines })
             |> toFullGenericExc None
         | File file -> 
             file
             |> tryReadFile
-            |> bind (parse stdCtx)
+            |> bind (parse (Some file) stdCtx)
             |> map (fun lines -> { maybeLocation = Some file; lines = lines })
             |> toFullGenericExc (Some file)
 

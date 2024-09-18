@@ -27,7 +27,7 @@ type UnparsedTypeDefinition = {
     unparsedSignature: string
 }
 
-let parse (standardContext: StandardContext) (input: string) : ClacResult<Line array> =
+let parse fileLoc (standardContext: StandardContext) (input: string) : ClacResult<Line array> =
     let defCtx = standardContext.defCtx
 
     input
@@ -51,7 +51,7 @@ let parse (standardContext: StandardContext) (input: string) : ClacResult<Line a
         if maybeTypeDuplicates.Length > 0 then ClacError ("Duplicate type definitions: " + (maybeTypeDuplicates |> String.concat ", ")) else
 
         preParsedLines
-        |> Array.map (ParseLine definitionContext)
+        |> Array.map (ParseLine fileLoc definitionContext)
         |> combineResultsToArray
     )
 
@@ -114,13 +114,13 @@ let ToUnparsedTypeDefinition (line: string) : ClacResult<UnparsedTypeDefinition>
     } 
     |> Ok
 
-let ParseLine (definitionContext: DefinedSymbols) (line: UnparsedLine) : ClacResult<Line> =
+let ParseLine fileLoc (definitionContext: DefinedSymbols) (line: UnparsedLine) : ClacResult<Line> =
     match line with
     | UnparsedExpression m -> m |> ParseManipulation definitionContext |> map Expression
-    | UnparsedAssignment f -> f |> ParseCallableFunction definitionContext |> map Assignment
+    | UnparsedAssignment f -> f |> ParseCallableFunction fileLoc definitionContext |> map Assignment
     | UnparsedTypeDefinition t -> t |> ParseTypeDefinition definitionContext |> map TypeDefinition
 
-let ParseCallableFunction (definitionContext: DefinedSymbols) (f: UnparsedCallableFunction) : ClacResult<CallableFunction> =
+let ParseCallableFunction fileLoc (definitionContext: DefinedSymbols) (f: UnparsedCallableFunction) : ClacResult<CallableFunction> =
     let maybeSignature = 
         f.unparsedSignature 
         |> trimSplit [| ' ' |] 
@@ -136,6 +136,7 @@ let ParseCallableFunction (definitionContext: DefinedSymbols) (f: UnparsedCallab
             signature = signature
             args = f.args
             fn = fn
+            fileLocation = fileLoc
         } |> Ok
     | errTuple -> errTuple |> joinErrorTuple |> Error
 

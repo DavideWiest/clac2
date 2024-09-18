@@ -54,6 +54,7 @@ type CallableFunction = {
     // for later
     //innerAssignments: CallableFunction array
     fn: Manipulation
+    fileLocation: string option
 }
 
 type Manipulation = Reference array // array of the functions

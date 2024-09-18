@@ -6,6 +6,9 @@ open FSharp.Core.Result
 type EvalCtx = {
     customAssignmentMap: Map<string, CallableFunction>
     stdFunctionsMap: Map<string, DefinedCallableFunction>
+    currentFile: string option
+    // for later
+    // currentLine: int option
 }
 
 module EvalCtx =
@@ -19,6 +22,7 @@ module EvalCtx =
                 stdCtx.definedCtx.functions 
                 |> Array.map (fun x -> x.name, x) 
                 |> Map.ofArray
+            currentFile = None
         }
 
 let getSignature evalCtx f =

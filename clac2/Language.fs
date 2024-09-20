@@ -22,6 +22,9 @@ module Files =
     let officialExtensions = [| "clac" |]
     let standardFileLocations = [| "scripts/Standard.clac" |]
 
+module Modules = 
+    let reservedFirstOrderModules = [| "Clac", "Std" |]
+
 module BuildIn =
     let baseVars = 
         [|

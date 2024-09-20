@@ -5,29 +5,31 @@ open Clac2.Utilities
 open FSharp.Core.Result
 open Clac2.DomainUtilities
 
-let evaluateLines (stdCtx: StandardContext) (lines: Line array) : FullClacResult<DefinedValue> array =
-    let evalCtx = EvalCtx.init stdCtx lines
+let evaluateFile (stdCtx: StandardContext) (file: MainFile) : FullClacResult<DefinedValue> array =
+    let dummyLoc = { fileLocation = None; lineLocation = 0 }
+    let evalCtx = EvalCtx.init stdCtx file.content dummyLoc
 
-    lines 
-    |> Array.choose (fun x -> match x with | Expression e -> Some e | _ -> None)
-    |> Array.map (evaluateOne evalCtx)
+    file.content.expressions
+    |> Array.map (fun freeManip -> evaluateOne evalCtx freeManip.loc freeManip.manipulation)
 
-let evaluateOne evalCtx manipulation  =
+let evaluateOne evalCtx loc manipulation  =
+    let newEvalCtx = { evalCtx with currentLoc = loc }
     manipulation
-    |> fun m -> m[0], substituteMany evalCtx Map.empty m[1..]
-    |> fun (startFn, args) -> args |> bind (eval evalCtx startFn)
+    |> fun m -> m[0], substituteMany newEvalCtx Map.empty m[1..]
+    |> fun (startFn, args) -> args |> bind (eval newEvalCtx startFn)
 
 let rec substituteOne evalCtx (substitutions: Map<string, DefinedValue>) x : FullClacResult<DefinedValue> =
     match x with
     | Fn f -> 
         if isPrimitive f then f |> readPrimitive |> DefinedPrimitive |> Ok else
 
+        // substitutions first to override globally defined functions
         if substitutions.ContainsKey f then substitutions[f] |> Ok else
 
-        if evalCtx.customAssignmentMap.ContainsKey f then evaluateOne evalCtx evalCtx.customAssignmentMap[f].fn else
+        if evalCtx.customAssignmentMap.ContainsKey f then evaluateOne evalCtx evalCtx.customAssignmentMap[f].loc evalCtx.customAssignmentMap[f].fn else
         if evalCtx.stdFunctionsMap.ContainsKey f then toDefinedFn evalCtx f |> Ok else
         
-        FullClacError ("Function not found: " + f) evalCtx.currentFile
+        FullExcFromEvalCtx ("Function not found: " + f) evalCtx
 
 let substituteMany evalCtx (substitutions: Map<string, DefinedValue>) m : FullClacResult<DefinedValue array> = 
     m |> Array.map (substituteOne evalCtx substitutions) |> combineResultsToArray
@@ -45,23 +47,23 @@ let rec eval evalCtx (startFn: Reference) (args: DefinedValue array) : FullClacR
     | Fn f -> 
 
         if isPrimitive f then 
-            if args.Length = 0 then f |> readPrimitive |> DefinedPrimitive |> Ok else FullClacError "Primitive used as function." evalCtx.currentFile
+            if args.Length = 0 then f |> readPrimitive |> DefinedPrimitive |> Ok else FullExcFromEvalCtx ("Primitive" + f + "used as function.") evalCtx
         else
 
         f
         |> getSignature evalCtx
-        |> toFullGenericExc evalCtx.currentFile
+        |> toFullExcFromEvalCtx evalCtx
         |> bind (fun signature -> 
             buildArgs evalCtx args signature 
             |> map (fun args -> signature, args)
         )
         |> bind (fun (signature, args) ->
             // change this for currying
-            if args.Length <> signature.Length - 1 then FullClacError "Incorrect number of arguments" evalCtx.currentFile else 
-            if evalCtx.stdFunctionsMap.ContainsKey f then evalCtx.stdFunctionsMap[f].DefinedFn args |> toClacResult |> toFullGenericExc evalCtx.currentFile else
+            if args.Length <> signature.Length - 1 then FullExcFromEvalCtx "Incorrect number of arguments" evalCtx else 
+            if evalCtx.stdFunctionsMap.ContainsKey f then evalCtx.stdFunctionsMap[f].DefinedFn args |> toClacResult |> toFullExcFromEvalCtx evalCtx else
             
             let fn = evalCtx.customAssignmentMap[f]
-            let evalCtxNew = { evalCtx with currentFile = fn.fileLocation }
+            let evalCtxNew = { evalCtx with currentLoc = fn.loc }
             let substitutions = Map.ofArray (args |> Array.zip fn.args)
             let substitutedFns = substituteMany evalCtxNew substitutions fn.fn
 
@@ -75,5 +77,5 @@ let toDefinedFn evalCtx f = DefinedFn (evalCtx.stdFunctionsMap[f].name, evalCtx.
 
 let definedValueFnToReference evalCtx (v: DefinedValue) : FullClacResult<Reference> =
     match v with
-    | DefinedPrimitive p -> ClacError "Primitive used as function." |> toFullGenericExc evalCtx.currentFile
+    | DefinedPrimitive p -> FullExcFromEvalCtx "Primitive used as function." evalCtx
     | DefinedFn (name, _) -> Fn name |> Ok

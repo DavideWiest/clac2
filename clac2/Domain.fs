@@ -14,36 +14,37 @@ type Program = {
 
 type File = {
     location: string
-    lines: Line array
+    lines: OrderedFile
 }
 
 type MainFile = {
     maybeLocation: string option
-    lines: Line array
+    content: OrderedFile
 }
 
 // Program
 
+// wrapper, for frontend and utils
 type Line =
-    | Expression of Manipulation // will be sent to stdout
+    | Expression of FreeManipulation // will be sent to stdout
     | Assignment of CallableFunction
     | TypeDefinition of TypeDefinition
     // for later
-    | ModuleReference of string
+    | ModuleReference of string array
+    | ModuleDeclaration of string array
 
 type OrderedFile = {
-    moduleName: LineAnnotated<string> option
-    expressions: LineAnnotatedArray<Manipulation>
-    assignments: LineAnnotatedArray<CallableFunction>
-    typeDefinitions: LineAnnotatedArray<TypeDefinition>
+    moduleDeclaration: string array option
+    moduleReferences: string array array
+    expressions: FreeManipulation array
+    assignments: CallableFunction array
+    typeDefinitions: TypeDefinition array
 }
 
-type LineAnnotated<'a> = {
-    line: Line
-    value: 'a
+type ProgramLocation = {
+    fileLocation: string option
+    lineLocation: int
 }
-
-type LineAnnotatedArray<'a> = LineAnnotated<'a> array
 
 // Language
 
@@ -54,7 +55,12 @@ type CallableFunction = {
     // for later
     //innerAssignments: CallableFunction array
     fn: Manipulation
-    fileLocation: string option
+    loc: ProgramLocation
+}
+
+type FreeManipulation = {
+    manipulation: Manipulation
+    loc: ProgramLocation
 }
 
 type Manipulation = Reference array // array of the functions
@@ -62,6 +68,7 @@ type Manipulation = Reference array // array of the functions
 type Reference =
     | Fn of string
     // for later 
+    // is this of any use?
     // | Manipulation of Manipulation
 
 type TypeDefinition = {
@@ -113,29 +120,22 @@ type DefinedContext = {
 
 // Errors 
 
-
 type GenericException = {
     message: string
 }
 
 type ClacResult<'a> = Result<'a, GenericException>
 
-type FullGenericException = {
+type IntermediateException = {
     genExc: GenericException
-    location: string option
+    line: int option
+}
+
+type IntermediateClacResult<'a> = Result<'a, IntermediateException>
+
+type FullGenericException = {
+    genExcWithLine: IntermediateException
+    fileLocation: string option
 }
 
 type FullClacResult<'a> = Result<'a, FullGenericException>
-
-// for later
-
-type Trace = {
-    exc: GenericException
-    trace: ExceptionLocation list
-}
-
-type ExceptionLocation = {
-    //location: string option
-    //line: int
-    placeholder: int
-}

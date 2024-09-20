@@ -30,10 +30,10 @@ module FileLoading =
         Files.standardFileLocations 
         |> Array.map (fun fileLoc ->
             fileLoc
-            |> tryReadFile
+            |> tryReadFileIntermedExc
             |> bind (parse (Some fileLoc) stdCtx)
             |> map (fun lines -> { location = fileLoc; lines = lines })
-            |> toFullGenericExc (Some fileLoc)
+            |> toFullExc (Some fileLoc)
         )
         |> combineResultsToArray
 
@@ -41,21 +41,21 @@ module FileLoading =
         match mainFile.maybeLocation with
         | None -> Ok [||]
         | Some fileLoc ->
-            findOtherClacFiles mainFile.lines fileLoc
+            findOtherClacFiles mainFile.content fileLoc
             |> Array.map (fun fileLoc -> 
                 fileLoc
-                |> tryReadFile
+                |> tryReadFileIntermedExc
                 |> bind (parse (Some fileLoc) stdCtx)
                 |> map (fun lines -> { location = fileLoc; lines = lines })
-                |> toFullGenericExc (Some fileLoc)
+                |> toFullExc (Some fileLoc)
             )
             |> combineResultsToArray
 
     let findOtherClacFiles lines fileLoc =
         let dir = System.IO.Path.GetDirectoryName fileLoc
-        let references = lines |> Array.choose (fun x -> match x with | ModuleReference s -> Some s | _ -> None)
+        let references = lines.moduleReferences |> Array.map (fun x -> System.IO.Path.Combine(dir, (x |> String.concat ".") + ".clac") )
 
-        let extensionValid (path: string) =Files.officialExtensions |> Array.contains (System.IO.Path.GetExtension path)
+        let extensionValid (path: string) = Files.officialExtensions |> Array.contains (System.IO.Path.GetExtension path)
         let fileIsReferenced (path: string) = references |> Array.contains (System.IO.Path.GetExtension path)
         
         System.IO.Directory.GetFiles dir
@@ -66,14 +66,17 @@ module FileLoading =
         | Interactive s -> 
             s
             |> parse None stdCtx
-            |> map (fun lines -> { maybeLocation = None; lines = lines })
-            |> toFullGenericExc None
+            |> map (fun lines -> { maybeLocation = None; content = lines })
+            |> toFullExc None
         | File file -> 
             file
-            |> tryReadFile
+            |> tryReadFileIntermedExc
             |> bind (parse (Some file) stdCtx)
-            |> map (fun lines -> { maybeLocation = Some file; lines = lines })
-            |> toFullGenericExc (Some file)
+            |> map (fun fileContents -> { maybeLocation = Some file; content = fileContents })
+            |> toFullExc (Some file)
+
+    let tryReadFileIntermedExc file : IntermediateClacResult<string> =
+        tryReadFile file |> toIntermediateExcWithoutLine
 
     let tryReadFile file : ClacResult<string> =
         try
@@ -89,12 +92,12 @@ module TypeChecking =
             fileArr
             |> Array.map (fun file -> file.location, file.lines)
             |> Array.map (fun (loc, lines) -> Some loc, lines |> TypeChecking.validateTypes stdCtx)
-            |> Array.map tupledToFullGenericExc
+            |> Array.map tupledToFullExc
             |> combineResultsToArray
         
-        program.mainFile.lines
+        program.mainFile.content
         |> (TypeChecking.validateTypes stdCtx)
-        |> toFullGenericExc program.mainFile.maybeLocation
+        |> toFullExc program.mainFile.maybeLocation
         |> bind (fun _ -> validateFileArray program.otherLocalFiles)
         |> bind (fun _ -> validateFileArray program.standardFiles)
         |> map (fun _ -> program)

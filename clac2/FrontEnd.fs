@@ -27,35 +27,43 @@ type UnparsedTypeDefinition = {
     unparsedSignature: string
 }
 
-let parse fileLoc (standardContext: StandardContext) (input: string) : ClacResult<Line array> =
+let parse fileLoc (standardContext: StandardContext) (input: string) : IntermediateClacResult<OrderedFile> =
     let defCtx = standardContext.defCtx
 
     input
-    |> trimSplit [| '\n'; ';' |]
-    |> Array.filter (fun x -> x <> "")
-    |> Array.filter (fun x -> not (x.StartsWith standardContext.commentIdentifier))
-    |> Array.map ToUnparsedLine
+    |> trimSplit [| '\n' |]
+    |> Array.mapi (fun i x -> (i, x))
+    |> trimSplitIndexedArray [| ';' |]
+    |> Array.filter (fun x -> (snd x) <> "")
+    |> Array.filter (fun x -> not ((snd x).StartsWith standardContext.commentIdentifier))
+    |> Array.map (unpackTuple ToUnparsedLine)
     |> combineResultsToArray
 
     |> bind (fun preParsedLines ->
-        let customTypes = preParsedLines |> Array.choose (fun x -> match x with | UnparsedTypeDefinition t -> Some t.name | _ -> None)
-        let customAssignments = preParsedLines |> Array.choose (fun x -> match x with | UnparsedAssignment f -> Some f.name | _ -> None)
+        let customTypes = preParsedLines |> Array.choose (fun (i, x) -> match x with | UnparsedTypeDefinition t -> Some t.name | _ -> None)
+        let customAssignments = preParsedLines |> Array.choose (fun (i, x) -> match x with | UnparsedAssignment f -> Some f.name | _ -> None)
+        
         let definitionContext = { 
             defCtx with types = Array.concat [customTypes; defCtx.types]; functions = Array.concat [customAssignments; defCtx.functions] 
         }
         
-        let maybeFunctionDuplicates = hasDuplicatesByReturning definitionContext.functions id
-        if maybeFunctionDuplicates.Length > 0 then ClacError ("Duplicate function definitions: " + (maybeFunctionDuplicates |> String.concat ", ")) else
+        let maybeFunctionDuplicate = hasDuplicatesByReturningFirstWithIndex definitionContext.functions id
+        if maybeFunctionDuplicate.IsSome then IntermediateExcFromParts ("Duplicate function definition for: " + (maybeFunctionDuplicate.Value |> snd)) (maybeFunctionDuplicate.Value |> fst) else
 
-        let maybeTypeDuplicates = hasDuplicatesByReturning definitionContext.types id
-        if maybeTypeDuplicates.Length > 0 then ClacError ("Duplicate type definitions: " + (maybeTypeDuplicates |> String.concat ", ")) else
+        let maybeTypeDuplicate = hasDuplicatesByReturningFirstWithIndex definitionContext.types id
+        if maybeTypeDuplicate.IsSome then IntermediateExcFromParts ("Duplicate type definition for: " + (maybeTypeDuplicate.Value |> snd)) (maybeTypeDuplicate.Value |> fst) else
 
         preParsedLines
-        |> Array.map (ParseLine fileLoc definitionContext)
+        |> Array.map (fun (i, l) -> i, ParseLine (buildLoc fileLoc i) definitionContext l)
+        |> Array.map (fun (i, r) -> toIntermediateExc i r)
         |> combineResultsToArray
+        |> map toOrderedFile
     )
 
-let ToUnparsedLine (line: string) : ClacResult<UnparsedLine> =
+let ToUnparsedLine (i: int) (line: string) : IntermediateClacResult<int * UnparsedLine> =
+    line |> ToUnparsedLineInner |> toIntermediateExc i |> map (fun x -> (i, x))
+
+let ToUnparsedLineInner (line: string) : ClacResult<UnparsedLine> =
     if line.StartsWith "let " then
         line |> ToUnparsedCallableFunction |> map UnparsedAssignment
     else if line.StartsWith "type " then
@@ -114,13 +122,13 @@ let ToUnparsedTypeDefinition (line: string) : ClacResult<UnparsedTypeDefinition>
     } 
     |> Ok
 
-let ParseLine fileLoc (definitionContext: DefinedSymbols) (line: UnparsedLine) : ClacResult<Line> =
+let ParseLine loc (definitionContext: DefinedSymbols) (line: UnparsedLine) : ClacResult<Line> =
     match line with
-    | UnparsedExpression m -> m |> ParseManipulation definitionContext |> map Expression
-    | UnparsedAssignment f -> f |> ParseCallableFunction fileLoc definitionContext |> map Assignment
+    | UnparsedExpression m -> m |> ParseManipulation definitionContext |> map (fun manipulation -> Expression { manipulation = manipulation; loc = loc })
+    | UnparsedAssignment f -> f |> ParseCallableFunction loc definitionContext |> map Assignment
     | UnparsedTypeDefinition t -> t |> ParseTypeDefinition definitionContext |> map TypeDefinition
 
-let ParseCallableFunction fileLoc (definitionContext: DefinedSymbols) (f: UnparsedCallableFunction) : ClacResult<CallableFunction> =
+let ParseCallableFunction loc (definitionContext: DefinedSymbols) (f: UnparsedCallableFunction) : ClacResult<CallableFunction> =
     let maybeSignature = 
         f.unparsedSignature 
         |> trimSplit [| ' ' |] 
@@ -136,7 +144,7 @@ let ParseCallableFunction fileLoc (definitionContext: DefinedSymbols) (f: Unpars
             signature = signature
             args = f.args
             fn = fn
-            fileLocation = fileLoc
+            loc = loc
         } |> Ok
     | errTuple -> errTuple |> joinErrorTuple |> Error
 
@@ -161,3 +169,18 @@ let stringToType (definitionContext: DefinedSymbols) (s: string) : ClacResult<Fn
     match s with
     | s' when Array.contains s' definitionContext.types -> BaseFnType s' |> Ok |> toClacResult
     | _ -> ClacError ("Unknown type: " + s)
+
+let toOrderedFile (lines: Line array) : OrderedFile =
+    let moduleName = lines |> Array.tryHead |> Option.bind (fun x -> match x with | ModuleDeclaration m -> Some m | _ -> None)
+    let moduleReferences = lines |> Array.choose (fun x -> match x with | ModuleReference m -> Some m | _ -> None)
+    let expressions = lines |> Array.choose (fun x -> match x with | Expression e -> Some e | _ -> None)
+    let assignments = lines |> Array.choose (fun x -> match x with | Assignment a -> Some a | _ -> None)
+    let typeDefinitions = lines |> Array.choose (fun x -> match x with | TypeDefinition t -> Some t | _ -> None)
+
+    {
+        moduleDeclaration = moduleName
+        moduleReferences = moduleReferences
+        expressions = expressions
+        assignments = assignments
+        typeDefinitions = typeDefinitions
+    }

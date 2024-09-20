@@ -16,6 +16,12 @@ let getKeys (m: Map<'a, 'b>) =
 let getValues (m: Map<'a, 'b>) =
     m |> Map.toSeq |> Seq.map snd |> Seq.toArray
 
+// Tuple
+
+let unpackTuple f (i, x) = f i x
+
+let reverseTuple f (x, i) = f (i, x)
+
 // String
 
 let getInput (args: string array) =
@@ -31,6 +37,11 @@ let stringIsEmpty (s: string) =
 let trimSplit (cs: char array) (s: string) =
     s.Split cs
     |> Array.map (fun x -> x.Trim())
+
+let trimSplitIndexedArray (cs: char array) (arr: (int * string) array) =
+    arr
+    |> Array.map (fun (i, x) -> trimSplit cs x |> Array.map (fun y -> i, y))
+    |> Array.concat
 
 // Results
 
@@ -59,8 +70,14 @@ let joinErrorTuple (results: Result<'a, GenericException> * Result<'b, GenericEx
 let hasDuplicatesBy (arr: 'a array) (f: 'a -> 'b) =
     arr |> Array.groupBy f |> Array.exists (fun (_, a) -> a.Length > 1)
 
-let hasDuplicatesByReturning (arr: 'a array) (f: 'a -> 'b) =
-    arr |> Array.groupBy f |> Array.filter (fun (_, a) -> a.Length > 1) |> Array.map fst
+let hasDuplicatesByReturningFirstWithIndex (arr: 'a array) (f: (int * 'a) -> 'b) =
+    arr 
+    |> Array.mapi (fun i a -> i,a) 
+    |> Array.groupBy f
+    |> Array.filter (fun (_, a) -> a.Length > 1)
+    |> Array.map snd
+    |> Array.concat
+    |> Array.tryHead
 
 // Misc base
 
@@ -73,7 +90,7 @@ let lineToString (line: Line) =
     let exprToString m = m |> Array.map string |> String.concat " "
 
     match line with
-    | Expression m -> exprToString m
+    | Expression m -> exprToString m.manipulation
     | Assignment f -> 
         let args = (f.args |> String.concat " ")
         let signature = (f.signature |> Array.map (fun x -> x.ToString()) |> String.concat " ")

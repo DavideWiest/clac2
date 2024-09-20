@@ -15,14 +15,14 @@ let main args =
     |> getInput
     |> FileLoading.loadAndParseFiles stdCtx
     |> bind (TypeChecking.checkTypes stdCtx)
-    |> bind (fun program -> program.mainFile.lines |> evaluateLines stdCtx |> combineResultsToArray)
+    |> bind (fun program -> program.mainFile |> evaluateFile stdCtx |> combineResultsToArray)
     |> (fun x ->
         match x with 
         | Ok results ->
             printfn "Evaluated:\n"
             results |> Array.iter (printfn "%A")
 
-        | Error e -> printFullClacError e
+        | Error e -> printFullExc e
         
         x
     )

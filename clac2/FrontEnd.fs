@@ -55,15 +55,15 @@ let parse fileLoc (standardContext: StandardContext) (input: string) : Intermedi
 
         preParsedLines
         |> Array.map (fun (i, l) -> i, ParseLine (buildLoc fileLoc i) definitionContext l)
-        |> Array.map (fun (i, r) -> toIntermediateExc i r)
+        |> Array.map (fun (i, r) -> toIntermediateResult i r)
         |> combineResultsToArray
         |> map toOrderedFile
     )
 
 let ToUnparsedLine (i: int) (line: string) : IntermediateClacResult<int * UnparsedLine> =
-    line |> ToUnparsedLineInner |> toIntermediateExc i |> map (fun x -> (i, x))
+    line |> ToUnparsedLineInner |> toIntermediateResult i |> map (fun x -> (i, x))
 
-let ToUnparsedLineInner (line: string) : ClacResult<UnparsedLine> =
+let ToUnparsedLineInner (line: string) : GenericResult<UnparsedLine> =
     if line.StartsWith "let " then
         line |> ToUnparsedCallableFunction |> map UnparsedAssignment
     else if line.StartsWith "type " then
@@ -71,24 +71,24 @@ let ToUnparsedLineInner (line: string) : ClacResult<UnparsedLine> =
     else
         line |> ToUnparsedManipulation |> UnparsedExpression |> Ok
 
-let ToUnparsedCallableFunction (line: string) : ClacResult<UnparsedCallableFunction> =
+let ToUnparsedCallableFunction (line: string) : GenericResult<UnparsedCallableFunction> =
     let parts = line |> trimSplit [| ' ' |]
-    if parts.Length < 6 then ClacError "Assignment missing parts. Missing space?" else
+    if parts.Length < 6 then GenExcError "Assignment missing parts. Missing space?" else
 
     let firstColon = parts |> Array.findIndex (fun x -> x = ":")
     let firstEqual = parts |> Array.findIndex (fun x -> x = "=")
 
-    if firstColon = -1 || firstEqual = -1 then ClacError "Assignment missing a colon or an equals." else
-    if firstColon > firstEqual then ClacError "Assignment is missing a colon before the assignment." else
-    if firstColon = firstEqual - 1 then ClacError "Assignment missing type signature between colon and equals." else
-    if parts.Length = firstEqual + 1 then ClacError "Assignment missing function body." else
+    if firstColon = -1 || firstEqual = -1 then GenExcError "Assignment missing a colon or an equals." else
+    if firstColon > firstEqual then GenExcError "Assignment is missing a colon before the assignment." else
+    if firstColon = firstEqual - 1 then GenExcError "Assignment missing type signature between colon and equals." else
+    if parts.Length = firstEqual + 1 then GenExcError "Assignment missing function body." else
 
     let nameAndArgs = parts[1..firstColon-1]
     let name , args = nameAndArgs[0], nameAndArgs[1..]
-    if Syntax.nameIsInvalid name then ClacError ("Invalid function name: " + name) else
+    if Syntax.nameIsInvalid name then GenExcError ("Invalid function name: " + name) else
     let signatureParts = parts[firstColon+1..firstEqual-1]
-    if (signatureParts |> Array.length) - 1 <> (args |> Array.length) then ClacError "Function signature does not match number of arguments." else
-    if args |> Array.map Syntax.nameIsInvalid |> Array.exists id then ClacError "Invalid argument name." else
+    if (signatureParts |> Array.length) - 1 <> (args |> Array.length) then GenExcError "Function signature does not match number of arguments." else
+    if args |> Array.map Syntax.nameIsInvalid |> Array.exists id then GenExcError "Invalid argument name." else
 
     let signature = signatureParts |> String.concat " "
     let fnBody = parts[firstEqual+1..] |> String.concat " " |> ToUnparsedManipulation
@@ -104,15 +104,15 @@ let ToUnparsedCallableFunction (line: string) : ClacResult<UnparsedCallableFunct
 // does not support precedence/nesting
 let ToUnparsedManipulation (line: string) = line |> trimSplit [| ' ' |]
 
-let ToUnparsedTypeDefinition (line: string) : ClacResult<UnparsedTypeDefinition> =
+let ToUnparsedTypeDefinition (line: string) : GenericResult<UnparsedTypeDefinition> =
     let parts = line |> trimSplit [| ' ' |]
-    if parts.Length < 3 then ClacError "Type definition missing parts. Missing space?" else
+    if parts.Length < 3 then GenExcError "Type definition missing parts. Missing space?" else
 
     let maybeFirstColon = parts |> Array.tryFindIndex (fun x -> x = ":")
-    if maybeFirstColon = None then ClacError "Type definition missing a colon separated by spaces." else
+    if maybeFirstColon = None then GenExcError "Type definition missing a colon separated by spaces." else
 
     let name = parts[1]
-    if Syntax.nameIsInvalid name then ClacError ("Invalid type name: " + name) else
+    if Syntax.nameIsInvalid name then GenExcError ("Invalid type name: " + name) else
 
     let signature = parts[maybeFirstColon.Value+1..] |> String.concat " "
 
@@ -122,13 +122,13 @@ let ToUnparsedTypeDefinition (line: string) : ClacResult<UnparsedTypeDefinition>
     } 
     |> Ok
 
-let ParseLine loc (definitionContext: DefinedSymbols) (line: UnparsedLine) : ClacResult<Line> =
+let ParseLine loc (definitionContext: DefinedSymbols) (line: UnparsedLine) : GenericResult<Line> =
     match line with
     | UnparsedExpression m -> m |> ParseManipulation definitionContext |> map (fun manipulation -> Expression { manipulation = manipulation; loc = loc })
     | UnparsedAssignment f -> f |> ParseCallableFunction loc definitionContext |> map Assignment
-    | UnparsedTypeDefinition t -> t |> ParseTypeDefinition definitionContext |> map TypeDefinition
+    | UnparsedTypeDefinition t -> t |> ParseTypeDefinition loc definitionContext |> map TypeDefinition
 
-let ParseCallableFunction loc (definitionContext: DefinedSymbols) (f: UnparsedCallableFunction) : ClacResult<CallableFunction> =
+let ParseCallableFunction loc (definitionContext: DefinedSymbols) (f: UnparsedCallableFunction) : GenericResult<CallableFunction> =
     let maybeSignature = 
         f.unparsedSignature 
         |> trimSplit [| ' ' |] 
@@ -148,27 +148,27 @@ let ParseCallableFunction loc (definitionContext: DefinedSymbols) (f: UnparsedCa
         } |> Ok
     | errTuple -> errTuple |> joinErrorTuple |> Error
 
-let ParseManipulation (definitionContext: DefinedSymbols) (m: UnparsedManipulation) : ClacResult<Manipulation> =
+let ParseManipulation (definitionContext: DefinedSymbols) (m: UnparsedManipulation) : GenericResult<Manipulation> =
     m
     |> Array.map (fun x ->
         if Array.contains x definitionContext.functions || isPrimitive x then
             x |> Fn |> Ok
         else
-            ClacError ("Unknown function: " + x)
+            GenExcError ("Unknown function: " + x)
     )
     |> combineClacResultsToArray
 
-let ParseTypeDefinition (definitionContext: DefinedSymbols) (t: UnparsedTypeDefinition) : ClacResult<TypeDefinition> =
+let ParseTypeDefinition loc (definitionContext: DefinedSymbols) (t: UnparsedTypeDefinition) : GenericResult<TypeDefinition> =
     t.unparsedSignature 
     |> trimSplit [| ' ' |] 
     |> Array.map (stringToType definitionContext) 
     |> combineClacResultsToArray
-    |> map (fun signature -> { name = t.name; signature = signature })
+    |> map (fun signature -> { name = t.name; signature = signature; loc=loc })
 
-let stringToType (definitionContext: DefinedSymbols) (s: string) : ClacResult<FnType> =
+let stringToType (definitionContext: DefinedSymbols) (s: string) : GenericResult<FnType> =
     match s with
-    | s' when Array.contains s' definitionContext.types -> BaseFnType s' |> Ok |> toClacResult
-    | _ -> ClacError ("Unknown type: " + s)
+    | s' when Array.contains s' definitionContext.types -> BaseFnType s' |> Ok |> toGenericResult
+    | _ -> GenExcError ("Unknown type: " + s)
 
 let toOrderedFile (lines: Line array) : OrderedFile =
     let moduleName = lines |> Array.tryHead |> Option.bind (fun x -> match x with | ModuleDeclaration m -> Some m | _ -> None)

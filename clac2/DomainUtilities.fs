@@ -36,55 +36,61 @@ let buildLoc fileLoc lineLoc = { fileLocation = fileLoc; lineLocation = lineLoc 
 
 let GenExc (e: string) = { message = e }
 
-let ClacError (e: string) = e |> GenExc |> Error
+let GenExcError (e: string) = e |> GenExc |> Error
 
-let toClacResult (result: Result<'a, string>) : ClacResult<'a> =
+let toGenericResult (result: Result<'a, string>) : GenericResult<'a> =
     match result with
     | Ok v -> Ok v
-    | Error e -> ClacError e
+    | Error e -> GenExcError e
 
 // IntermediateGenericException and IntermediateClacResult
 
 let IntermediateExc (line: int) (e: GenericException) = { genExc = e; line = Some line }
 let IntermediateExcFromParts (e: string) (line: int) = e |> GenExc |> IntermediateExc line |> Error
+let IntermediateExcFPPure (e: string) (line: int) = e |> GenExc |> IntermediateExc line
 
-let toIntermediateExc (line: int) (result: ClacResult<'a>) : IntermediateClacResult<'a> =
+let toIntermediateResult (line: int) (result: GenericResult<'a>) : IntermediateClacResult<'a> =
     result |> mapError (fun e -> IntermediateExc line e)
 
-let toIntermediateExcWithoutLine (result: ClacResult<'a>) : IntermediateClacResult<'a> = 
+let toIntermediateExcWithoutLine (result: GenericResult<'a>) : IntermediateClacResult<'a> = 
     result |> mapError (fun e -> { genExc = e; line = None })
 
-let tupledToIntermediateGenExc (result: int * ClacResult<'a>) : IntermediateClacResult<'a> = 
+let tupledToIntermediateGenExc (result: int * GenericResult<'a>) : IntermediateClacResult<'a> = 
     let (line, err) = result
-    toIntermediateExc line err
+    toIntermediateResult line err
 
 
 // FullGenericException and FullClacResult
 
+let FullExc (location: string option) (genExcWithLine: IntermediateException) = { genExcWithLine = genExcWithLine; fileLocation = location }
 let FullExcFromParts (e: string) (line: int) (location: string option) = e |> GenExc |> IntermediateExc line |> FullExc location |> Error
 
-let FullExc (location: string option) (genExcWithLine: IntermediateException) = { genExcWithLine = genExcWithLine; fileLocation = location }
-let toFullExc (location: string option) (result: IntermediateClacResult<'a>) : FullClacResult<'a> =
+let toFullResult (location: string option) (result: IntermediateClacResult<'a>) : FullClacResult<'a> =
     result |> mapError (fun e -> FullExc location e)
 
-let toFullExcFromEvalCtx (evalCtx: EvalCtx) (result: ClacResult<'a>) : FullClacResult<'a> =
-    result |> toIntermediateExc evalCtx.currentLoc.lineLocation |> toFullExc evalCtx.currentLoc.fileLocation
+let toFullExcFromEvalCtx (evalCtx: EvalCtx) (result: GenericResult<'a>) : FullClacResult<'a> =
+    result |> toIntermediateResult evalCtx.currentLoc.lineLocation |> toFullResult evalCtx.currentLoc.fileLocation
 
 let FullExcFromEvalCtx (e: string) (evalCtx: EvalCtx) = e |> GenExc |> IntermediateExc (evalCtx.currentLoc.lineLocation) |> FullExc evalCtx.currentLoc.fileLocation |> Error
 
 let tupledToFullExc (result: string option * IntermediateClacResult<'a>) : FullClacResult<'a> = 
     let (location, err) = result
-    toFullExc location err
+    toFullResult location err
 
 let printFullExc (e: FullGenericException) =
-    let lineSubStr = if e.genExcWithLine.line.IsSome then sprintf " at line %d" e.genExcWithLine.line.Value else ""
-    let fileSubStr = if e.fileLocation.IsSome then sprintf " in file %s" e.fileLocation.Value else ""
-    printfn "Error occured in %s %s:" fileSubStr lineSubStr
+    let lineSubStr = if e.genExcWithLine.line.IsSome then sprintf " at line %d" (e.genExcWithLine.line.Value+1) else ""
+    let fileSubStr = if e.fileLocation.IsSome then sprintf " in %s" e.fileLocation.Value else ""
+    let fileLink = 
+        match (e.fileLocation, e.genExcWithLine.line) with
+        | Some fileLoc, Some lineLoc -> sprintf "%s:%d" fileLoc (lineLoc+1)
+        | Some fileLoc, None -> fileLoc
+        | _ -> ""
+    printfn "Error occured in %s %s: %s" fileSubStr lineSubStr fileLink
     printfn "%s" e.genExcWithLine.genExc.message
 
 // Utilities
 
-let combineClacResultsToArray (results: ClacResult<'a> seq) : ClacResult<'a array> =
+let combineClacResultsToArray (results: GenericResult<'a> seq) : GenericResult<'a array> =
     results
     |> Array.ofSeq
     |> Array.fold (fun acc r ->

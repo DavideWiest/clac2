@@ -33,7 +33,7 @@ module FileLoading =
             |> tryReadFileIntermedExc
             |> bind (parse (Some fileLoc) stdCtx)
             |> map (fun lines -> { location = fileLoc; lines = lines })
-            |> toFullExc (Some fileLoc)
+            |> toFullResult (Some fileLoc)
         )
         |> combineResultsToArray
 
@@ -47,7 +47,7 @@ module FileLoading =
                 |> tryReadFileIntermedExc
                 |> bind (parse (Some fileLoc) stdCtx)
                 |> map (fun lines -> { location = fileLoc; lines = lines })
-                |> toFullExc (Some fileLoc)
+                |> toFullResult (Some fileLoc)
             )
             |> combineResultsToArray
 
@@ -67,23 +67,23 @@ module FileLoading =
             s
             |> parse None stdCtx
             |> map (fun lines -> { maybeLocation = None; content = lines })
-            |> toFullExc None
+            |> toFullResult None
         | File file -> 
             file
             |> tryReadFileIntermedExc
             |> bind (parse (Some file) stdCtx)
             |> map (fun fileContents -> { maybeLocation = Some file; content = fileContents })
-            |> toFullExc (Some file)
+            |> toFullResult (Some file)
 
     let tryReadFileIntermedExc file : IntermediateClacResult<string> =
         tryReadFile file |> toIntermediateExcWithoutLine
 
-    let tryReadFile file : ClacResult<string> =
+    let tryReadFile file : GenericResult<string> =
         try
             Ok (System.IO.File.ReadAllText file)
         with
-        | :? System.IO.FileNotFoundException as e -> ClacError (sprintf "File not found: %s" file)
-        | e -> ClacError (sprintf "Error reading file \"%s\": %s" file (e.ToString()))
+        | :? System.IO.FileNotFoundException as e -> GenExcError (sprintf "File not found: %s" file)
+        | e -> GenExcError (sprintf "Error reading file \"%s\": %s" file (e.ToString()))
 
 module TypeChecking = 
 
@@ -97,7 +97,7 @@ module TypeChecking =
         
         program.mainFile.content
         |> (TypeChecking.validateTypes stdCtx)
-        |> toFullExc program.mainFile.maybeLocation
+        |> toFullResult program.mainFile.maybeLocation
         |> bind (fun _ -> validateFileArray program.otherLocalFiles)
         |> bind (fun _ -> validateFileArray program.standardFiles)
         |> map (fun _ -> program)

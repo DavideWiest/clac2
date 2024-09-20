@@ -74,6 +74,7 @@ type Reference =
 type TypeDefinition = {
     name: string
     signature: FnType array
+    loc: ProgramLocation
 }
 
 type FnType =
@@ -124,7 +125,7 @@ type GenericException = {
     message: string
 }
 
-type ClacResult<'a> = Result<'a, GenericException>
+type GenericResult<'a> = Result<'a, GenericException>
 
 type IntermediateException = {
     genExc: GenericException

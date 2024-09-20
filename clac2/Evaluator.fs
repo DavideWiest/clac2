@@ -60,7 +60,7 @@ let rec eval evalCtx (startFn: Reference) (args: DefinedValue array) : FullClacR
         |> bind (fun (signature, args) ->
             // change this for currying
             if args.Length <> signature.Length - 1 then FullExcFromEvalCtx "Incorrect number of arguments" evalCtx else 
-            if evalCtx.stdFunctionsMap.ContainsKey f then evalCtx.stdFunctionsMap[f].DefinedFn args |> toClacResult |> toFullExcFromEvalCtx evalCtx else
+            if evalCtx.stdFunctionsMap.ContainsKey f then evalCtx.stdFunctionsMap[f].DefinedFn args |> toGenericResult |> toFullExcFromEvalCtx evalCtx else
             
             let fn = evalCtx.customAssignmentMap[f]
             let evalCtxNew = { evalCtx with currentLoc = fn.loc }

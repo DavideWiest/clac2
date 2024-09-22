@@ -8,13 +8,12 @@ type MainFileUnparsed =
 
 type Program = {
     mainFile: MainFile
-    otherLocalFiles: File array
-    standardFiles: File array
+    secondaryFiles: File array
 }
 
 type File = {
     location: string
-    lines: OrderedFile
+    content: OrderedFile
 }
 
 type MainFile = {
@@ -30,12 +29,12 @@ type Line =
     | Assignment of CallableFunction
     | TypeDefinition of TypeDefinition
     // for later
-    | ModuleReference of string array
-    | ModuleDeclaration of string array
+    | ModuleReference of string 
+    | ModuleDeclaration of string 
 
 type OrderedFile = {
-    moduleDeclaration: string array option
-    moduleReferences: string array array
+    moduleDeclaration: string option
+    moduleReferences: string array 
     expressions: FreeManipulation array
     assignments: CallableFunction array
     typeDefinitions: TypeDefinition array
@@ -105,12 +104,12 @@ type DefinedFn = DefinedValue array -> Result<DefinedValue, string>
 // Context
 
 type StandardContext = {
-    defCtx: DefinedSymbols
+    defCtx: DefinitionContext
     definedCtx: DefinedContext
     commentIdentifier: string
 }
 
-type DefinedSymbols = {
+type DefinitionContext = {
     types: string array
     functions: string array
 }

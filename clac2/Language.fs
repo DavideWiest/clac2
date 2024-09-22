@@ -21,6 +21,8 @@ module Types =
 module Files =
     let officialExtensions = [| "clac" |]
     let standardFileLocations = [| "scripts/Standard.clac" |]
+    let packageLocation = "clacPackages"
+    let toQualifiedFileLoc dir (importName: string) = System.IO.Path.Combine(dir, importName + if Array.exists (fun (ending: string) -> importName.EndsWith(ending)) Files.officialExtensions then "" else Files.officialExtensions[0]) 
 
 module Modules = 
     let reservedFirstOrderModules = [| "Clac", "Std" |]

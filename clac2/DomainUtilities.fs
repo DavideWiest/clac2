@@ -10,11 +10,20 @@ type EvalCtx = {
 }
 
 module EvalCtx =
-    let init stdCtx file loc  =        
+    let init stdCtx program loc  =        
+        let file = program.mainFile
+        let allFiles = 
+            program.secondaryFiles
+            |> Array.map (fun x -> x.content) |> Array.append [| file.content |]
+
+        printfn "allFiles: %A" allFiles
+
         {
             customAssignmentMap = 
-                file.assignments
-                |> Array.map (fun x -> x.name, x) 
+                allFiles
+                |> Array.map (fun x -> x.assignments)
+                |> Array.map (Array.map (fun x -> x.name, x))
+                |> Array.concat
                 |> Map.ofArray
             stdFunctionsMap = 
                 stdCtx.definedCtx.functions 
@@ -78,14 +87,14 @@ let tupledToFullExc (result: string option * IntermediateClacResult<'a>) : FullC
     toFullResult location err
 
 let printFullExc (e: FullGenericException) =
-    let lineSubStr = if e.genExcWithLine.line.IsSome then sprintf " at line %d" (e.genExcWithLine.line.Value+1) else ""
-    let fileSubStr = if e.fileLocation.IsSome then sprintf " in %s" e.fileLocation.Value else ""
+    let lineSubStr = if e.genExcWithLine.line.IsSome then sprintf "at line %d" (e.genExcWithLine.line.Value+1) else ""
+    let fileSubStr = if e.fileLocation.IsSome then sprintf "in %s" e.fileLocation.Value else "in interactive"
     let fileLink = 
         match (e.fileLocation, e.genExcWithLine.line) with
         | Some fileLoc, Some lineLoc -> sprintf "%s:%d" fileLoc (lineLoc+1)
         | Some fileLoc, None -> fileLoc
         | _ -> ""
-    printfn "Error occured in %s %s: %s" fileSubStr lineSubStr fileLink
+    printfn "Error occured %s %s: %s" fileSubStr lineSubStr fileLink
     printfn "%s" e.genExcWithLine.genExc.message
 
 // Utilities

@@ -5,11 +5,11 @@ open Clac2.Utilities
 open FSharp.Core.Result
 open Clac2.DomainUtilities
 
-let evaluateFile (stdCtx: StandardContext) (file: MainFile) : FullClacResult<DefinedValue> array =
+let evaluateFile (stdCtx: StandardContext) (program: Program) : FullClacResult<DefinedValue> array =
     let dummyLoc = { fileLocation = None; lineLocation = 0 }
-    let evalCtx = EvalCtx.init stdCtx file.content dummyLoc
+    let evalCtx = EvalCtx.init stdCtx program dummyLoc
 
-    file.content.expressions
+    program.mainFile.content.expressions
     |> Array.map (fun freeManip -> evaluateOne evalCtx freeManip.loc freeManip.manipulation)
 
 let evaluateOne evalCtx loc manipulation  =
@@ -47,7 +47,9 @@ let rec eval evalCtx (startFn: Reference) (args: DefinedValue array) : FullClacR
     | Fn f -> 
 
         if isPrimitive f then 
-            if args.Length = 0 then f |> readPrimitive |> DefinedPrimitive |> Ok else FullExcFromEvalCtx ("Primitive" + f + "used as function.") evalCtx
+            if args.Length <> 0 then FullExcFromEvalCtx ("Primitive " + f + " used as function.") evalCtx else
+
+            f |> readPrimitive |> DefinedPrimitive |> Ok
         else
 
         f
@@ -58,8 +60,6 @@ let rec eval evalCtx (startFn: Reference) (args: DefinedValue array) : FullClacR
             |> map (fun args -> signature, args)
         )
         |> bind (fun (signature, args) ->
-            // change this for currying
-            if args.Length <> signature.Length - 1 then FullExcFromEvalCtx "Incorrect number of arguments" evalCtx else 
             if evalCtx.stdFunctionsMap.ContainsKey f then evalCtx.stdFunctionsMap[f].DefinedFn args |> toGenericResult |> toFullExcFromEvalCtx evalCtx else
             
             let fn = evalCtx.customAssignmentMap[f]
@@ -69,8 +69,12 @@ let rec eval evalCtx (startFn: Reference) (args: DefinedValue array) : FullClacR
 
             if fn.fn.Length = 1 then substitutedFns |> map (fun fns -> fns[0]) else
 
+            //if args.Length <> signature.Length - 1 then 
+                // curry function
+
+            //else 
             substitutedFns
-            |> bind (fun x -> eval evalCtxNew fn.fn[0] x[1..])
+            |> bind (fun fns -> eval evalCtxNew fn.fn[0] fns[1..])
         )
 
 let toDefinedFn evalCtx f = DefinedFn (evalCtx.stdFunctionsMap[f].name, evalCtx.stdFunctionsMap[f].DefinedFn)

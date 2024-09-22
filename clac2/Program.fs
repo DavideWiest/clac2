@@ -2,7 +2,7 @@
 open Clac2.Utilities
 open Clac2.DomainUtilities
 open Clac2.Modularization
-open Clac2.Evaluator
+open Clac2.Interpreter
 open FSharp.Core.Result
 open Clac2.Language
 
@@ -15,7 +15,7 @@ let main args =
     |> getInput
     |> FileLoading.loadAndParseFiles stdCtx
     |> bind (TypeChecking.checkTypes stdCtx)
-    |> bind (fun program -> program.mainFile |> evaluateFile stdCtx |> combineResultsToArray)
+    |> bind (fun program -> program |> evaluateFile stdCtx |> combineResultsToArray)
     |> (fun x ->
         match x with 
         | Ok results ->

@@ -10,7 +10,7 @@
     <Compile Include="Language.fs" />
     <Compile Include="FrontEnd.fs" />
     <Compile Include="MiddleEnd.fs" />
-    <Compile Include="Evaluator.fs" />
+    <Compile Include="Interpreter.fs" />
     <Compile Include="Modularization.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>

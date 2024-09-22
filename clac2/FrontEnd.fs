@@ -10,6 +10,8 @@ type UnparsedLine =
     | UnparsedExpression of UnparsedManipulation
     | UnparsedAssignment of UnparsedCallableFunction
     | UnparsedTypeDefinition of UnparsedTypeDefinition
+    | UnparsedModuleDeclaration of string
+    | UnparsedModuleReference of string
 
 type UnparsedCallableFunction = {
     name: string
@@ -27,38 +29,45 @@ type UnparsedTypeDefinition = {
     unparsedSignature: string
 }
 
-let parse fileLoc (standardContext: StandardContext) (input: string) : IntermediateClacResult<OrderedFile> =
-    let defCtx = standardContext.defCtx
+let parseFull fileLoc (stdCtx: StandardContext) (input: string) : FullClacResult<OrderedFile> =
+    preparse stdCtx input |> toFullResult fileLoc |> bind (parseFullResult fileLoc stdCtx)
 
+let preparse stdCtx (input: string) : IntermediateClacResult<(int * UnparsedLine) array> =
     input
     |> trimSplit [| '\n' |]
     |> Array.mapi (fun i x -> (i, x))
     |> trimSplitIndexedArray [| ';' |]
     |> Array.filter (fun x -> (snd x) <> "")
-    |> Array.filter (fun x -> not ((snd x).StartsWith standardContext.commentIdentifier))
+    |> Array.filter (fun x -> not ((snd x).StartsWith stdCtx.commentIdentifier))
     |> Array.map (unpackTuple ToUnparsedLine)
     |> combineResultsToArray
 
-    |> bind (fun preParsedLines ->
-        let customTypes = preParsedLines |> Array.choose (fun (i, x) -> match x with | UnparsedTypeDefinition t -> Some t.name | _ -> None)
-        let customAssignments = preParsedLines |> Array.choose (fun (i, x) -> match x with | UnparsedAssignment f -> Some f.name | _ -> None)
-        
-        let definitionContext = { 
-            defCtx with types = Array.concat [customTypes; defCtx.types]; functions = Array.concat [customAssignments; defCtx.functions] 
-        }
-        
-        let maybeFunctionDuplicate = hasDuplicatesByReturningFirstWithIndex definitionContext.functions id
-        if maybeFunctionDuplicate.IsSome then IntermediateExcFromParts ("Duplicate function definition for: " + (maybeFunctionDuplicate.Value |> snd)) (maybeFunctionDuplicate.Value |> fst) else
+let parseFullResult fileLoc stdCtx preParsedLines = parse fileLoc stdCtx preParsedLines |> toFullResult fileLoc 
 
-        let maybeTypeDuplicate = hasDuplicatesByReturningFirstWithIndex definitionContext.types id
-        if maybeTypeDuplicate.IsSome then IntermediateExcFromParts ("Duplicate type definition for: " + (maybeTypeDuplicate.Value |> snd)) (maybeTypeDuplicate.Value |> fst) else
+let parse fileLoc stdCtx (preParsedLines: (int * UnparsedLine) array) =    
+    let localDefCtx = extractCustomDefinitions preParsedLines
+    let definitionContext = { 
+        stdCtx.defCtx with types = Array.concat [localDefCtx.types; stdCtx.defCtx.types]; functions = Array.concat [localDefCtx.functions; stdCtx.defCtx.functions] 
+    }
+    
+    let maybeFunctionDuplicate = hasDuplicatesByReturningFirstWithIndex definitionContext.functions id
+    if maybeFunctionDuplicate.IsSome then IntermediateExcFromParts ("Duplicate function definition for: " + (maybeFunctionDuplicate.Value |> snd)) (maybeFunctionDuplicate.Value |> fst) else
 
-        preParsedLines
-        |> Array.map (fun (i, l) -> i, ParseLine (buildLoc fileLoc i) definitionContext l)
-        |> Array.map (fun (i, r) -> toIntermediateResult i r)
-        |> combineResultsToArray
-        |> map toOrderedFile
-    )
+    let maybeTypeDuplicate = hasDuplicatesByReturningFirstWithIndex definitionContext.types id
+    if maybeTypeDuplicate.IsSome then IntermediateExcFromParts ("Duplicate type definition for: " + (maybeTypeDuplicate.Value |> snd)) (maybeTypeDuplicate.Value |> fst) else
+
+    printfn "Preparsed lines of %s %A" (fileLoc |> Option.defaultValue "interactive") preParsedLines
+
+    preParsedLines
+    |> Array.map (fun (i, l) -> i, ParseLine (buildLoc fileLoc i) definitionContext l)
+    |> Array.map (fun (i, r) -> toIntermediateResult i r)
+    |> combineResultsToArray
+    |> map toOrderedFile
+
+let extractCustomDefinitions preParsedLines  =
+    let customTypes = preParsedLines |> Array.choose (fun (i, x) -> match x with | UnparsedTypeDefinition t -> Some t.name | _ -> None)
+    let customAssignments = preParsedLines |> Array.choose (fun (i, x) -> match x with | UnparsedAssignment f -> Some f.name | _ -> None)
+    { types = customTypes; functions = customAssignments }
 
 let ToUnparsedLine (i: int) (line: string) : IntermediateClacResult<int * UnparsedLine> =
     line |> ToUnparsedLineInner |> toIntermediateResult i |> map (fun x -> (i, x))
@@ -68,6 +77,10 @@ let ToUnparsedLineInner (line: string) : GenericResult<UnparsedLine> =
         line |> ToUnparsedCallableFunction |> map UnparsedAssignment
     else if line.StartsWith "type " then
         line |> ToUnparsedTypeDefinition |> map UnparsedTypeDefinition
+    else if line.StartsWith "module " then
+        line.Substring(7).Trim() |> UnparsedModuleDeclaration |> Ok
+    else if line.StartsWith "open " then
+        line.Substring(5).Trim() |> UnparsedModuleReference |> Ok
     else
         line |> ToUnparsedManipulation |> UnparsedExpression |> Ok
 
@@ -122,13 +135,15 @@ let ToUnparsedTypeDefinition (line: string) : GenericResult<UnparsedTypeDefiniti
     } 
     |> Ok
 
-let ParseLine loc (definitionContext: DefinedSymbols) (line: UnparsedLine) : GenericResult<Line> =
+let ParseLine loc (definitionContext: DefinitionContext) (line: UnparsedLine) : GenericResult<Line> =
     match line with
     | UnparsedExpression m -> m |> ParseManipulation definitionContext |> map (fun manipulation -> Expression { manipulation = manipulation; loc = loc })
     | UnparsedAssignment f -> f |> ParseCallableFunction loc definitionContext |> map Assignment
     | UnparsedTypeDefinition t -> t |> ParseTypeDefinition loc definitionContext |> map TypeDefinition
+    | UnparsedModuleDeclaration m -> parseModuleDeclaration loc m
+    | UnparsedModuleReference m -> parseModuleReference loc m
 
-let ParseCallableFunction loc (definitionContext: DefinedSymbols) (f: UnparsedCallableFunction) : GenericResult<CallableFunction> =
+let ParseCallableFunction loc (definitionContext: DefinitionContext) (f: UnparsedCallableFunction) : GenericResult<CallableFunction> =
     let maybeSignature = 
         f.unparsedSignature 
         |> trimSplit [| ' ' |] 
@@ -148,7 +163,7 @@ let ParseCallableFunction loc (definitionContext: DefinedSymbols) (f: UnparsedCa
         } |> Ok
     | errTuple -> errTuple |> joinErrorTuple |> Error
 
-let ParseManipulation (definitionContext: DefinedSymbols) (m: UnparsedManipulation) : GenericResult<Manipulation> =
+let ParseManipulation (definitionContext: DefinitionContext) (m: UnparsedManipulation) : GenericResult<Manipulation> =
     m
     |> Array.map (fun x ->
         if Array.contains x definitionContext.functions || isPrimitive x then
@@ -158,17 +173,37 @@ let ParseManipulation (definitionContext: DefinedSymbols) (m: UnparsedManipulati
     )
     |> combineClacResultsToArray
 
-let ParseTypeDefinition loc (definitionContext: DefinedSymbols) (t: UnparsedTypeDefinition) : GenericResult<TypeDefinition> =
+let ParseTypeDefinition loc (definitionContext: DefinitionContext) (t: UnparsedTypeDefinition) : GenericResult<TypeDefinition> =
     t.unparsedSignature 
     |> trimSplit [| ' ' |] 
     |> Array.map (stringToType definitionContext) 
     |> combineClacResultsToArray
     |> map (fun signature -> { name = t.name; signature = signature; loc=loc })
 
-let stringToType (definitionContext: DefinedSymbols) (s: string) : GenericResult<FnType> =
+let stringToType (definitionContext: DefinitionContext) (s: string) : GenericResult<FnType> =
     match s with
     | s' when Array.contains s' definitionContext.types -> BaseFnType s' |> Ok |> toGenericResult
     | _ -> GenExcError ("Unknown type: " + s)
+
+let parseModuleDeclaration loc (line: string) : GenericResult<Line> =
+    match loc.fileLocation with
+    | None -> GenExcError "Module declaration outside of file."
+    | Some fileLoc -> 
+        let dir = System.IO.Path.GetDirectoryName fileLoc
+        
+        // for now, module and files names must match
+        if line |> Files.toQualifiedFileLoc dir <> fileLoc then GenExcError "Module declaration does not match file location." else
+
+        line |> Files.toQualifiedFileLoc dir |> ModuleDeclaration |> Ok
+
+let parseModuleReference loc (line: string) : GenericResult<Line> =
+    let dir = getDirOfReference loc.fileLocation
+    line |> Files.toQualifiedFileLoc dir |> ModuleReference |> Ok
+
+let getDirOfReference fileLoc =
+    match fileLoc with
+    | Some fileLoc -> System.IO.Path.GetDirectoryName fileLoc
+    | None -> Files.packageLocation
 
 let toOrderedFile (lines: Line array) : OrderedFile =
     let moduleName = lines |> Array.tryHead |> Option.bind (fun x -> match x with | ModuleDeclaration m -> Some m | _ -> None)

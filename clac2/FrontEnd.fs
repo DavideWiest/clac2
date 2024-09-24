@@ -4,6 +4,7 @@ open Clac2.Domain
 open Clac2.Utilities
 open Clac2.Language
 open Clac2.DomainUtilities
+open Clac2.Language
 open FSharp.Core.Result
 
 type UnparsedLine =
@@ -30,15 +31,15 @@ type UnparsedTypeDefinition = {
 }
 
 let parseFull fileLoc (stdCtx: StandardContext) (input: string) : FullClacResult<OrderedFile> =
-    preparse stdCtx input |> toFullResult fileLoc |> bind (parseFullResult fileLoc stdCtx)
+    preparse input |> toFullResult fileLoc |> bind (parseFullResult fileLoc stdCtx)
 
-let preparse stdCtx (input: string) : IntermediateClacResult<(int * UnparsedLine) array> =
+let preparse (input: string) : IntermediateClacResult<(int * UnparsedLine) array> =
     input
     |> trimSplit [| '\n' |]
     |> Array.mapi (fun i x -> (i, x))
     |> trimSplitIndexedArray [| ';' |]
     |> Array.filter (fun x -> (snd x) <> "")
-    |> Array.filter (fun x -> not ((snd x).StartsWith stdCtx.commentIdentifier))
+    |> Array.filter (fun x -> not ((snd x).StartsWith Syntax.commentIdentifer))
     |> Array.map (unpackTuple ToUnparsedLine)
     |> combineResultsToArray
 

@@ -9,7 +9,7 @@ open Clac2.Language
 [<EntryPoint>]
 let main args =
     let baseFuncsCombined = Array.concat [BuildIn.baseFuncs; BuildIn.baseVars]
-    let stdCtx = StandardContext.buildStandardContext baseFuncsCombined Types.supportedTypes Syntax.commentIdentifer
+    let stdCtx = StandardContext.buildStandardContext baseFuncsCombined Types.supportedTypes 
 
     args
     |> getInput

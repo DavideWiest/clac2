@@ -106,7 +106,6 @@ type DefinedFn = DefinedValue array -> Result<DefinedValue, string>
 type StandardContext = {
     defCtx: DefinitionContext
     definedCtx: DefinedContext
-    commentIdentifier: string
 }
 
 type DefinitionContext = {

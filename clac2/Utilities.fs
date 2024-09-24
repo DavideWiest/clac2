@@ -58,11 +58,10 @@ let combineResults (results: Result<'a, 'b> seq) =
 
 let combineResultsToArray result = result |> combineResults |> map Array.ofList
 
-let joinErrorTuple (results: Result<'a, GenericException> * Result<'b, GenericException>) = 
+let joinErrorTuple (results: Result<'a, 'b> * Result<'c, 'b>) = 
     match results with
-    | Error e, Ok _ -> e
+    | Error e, _ -> e
     | Ok _, Error e -> e
-    | Error e1, Error e2 -> { message = e1.message + "\n\n" + "Another error occured." }
     | _ -> failwith "Misused joinErrorTuple: both results are Ok"
     
 // Array

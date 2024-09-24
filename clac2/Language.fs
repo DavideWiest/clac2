@@ -50,7 +50,7 @@ module BuildIn =
         |> Array.map (Conversion.fSharpFunctionToFn basicArithmeticArgsAndSignature Types.intType)
 
 module StandardContext =
-    let buildStandardContext (baseFuncs: DefinedCallableFunction array) (supportedTypes: string array) commentIdentifier =
+    let buildStandardContext (baseFuncs: DefinedCallableFunction array) (supportedTypes: string array) =
         {
             defCtx = {
                 types = supportedTypes
@@ -59,7 +59,6 @@ module StandardContext =
             definedCtx = {
                 functions = baseFuncs
             }
-            commentIdentifier = commentIdentifier
         }
 
 module Conversion = 

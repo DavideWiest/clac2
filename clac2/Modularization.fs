@@ -10,104 +10,84 @@ open Clac2.Language
 
 module FileLoading =
 
-    let loadAndParseFiles stdCtx (unparsedMainFile: MainFileUnparsed) : FullClacResult<Program> =
-        loadOtherFiles stdCtx Files.standardFileLocations
-        |> bind (fun (stdFiles: File array) -> 
-            unparsedMainFile
-            |> loadMainFile stdCtx
-            |> map (fun parsedMainFile  -> parsedMainFile, stdFiles)
+    let loadAndParseFiles (stdCtx: StandardContext) (unparsedMainFile: MainFileUnparsed) : FullClacResult<Program> =
+        match unparsedMainFile with
+        | Interactive s -> loadAllFilesInner stdCtx Files.standardFileLocations None s
+        | File f -> f |> tryReadFileIntermedExc |> toFullResult (Some f) |> loadAllFilesInner stdCtx Files.standardFileLocations (Some f)
+
+    let loadAllFilesInner stdCtx (baseDeps: string array) (mainFileLoc: string option) (mailFileLines: string) : FullClacResult<Program> =
+        // fix string vs string option disparity
+        // initialize memos with main file ?
+        // fileLoc parameter should be string option, mmaybe
+        // use  baseDeps
+        loadDefCtxFromDependencies Map.empty Map.empty mainFileLoc
+        |> bind (fun (mainFileDefCtx, depMemo, fileContentsMemo) ->
+            let otherFiles = 
+                fileContentsMemo
+                |> Map.toArray
+                |> Array.map (fun (fileLoc, preParsedLines) ->
+                    let defCtx = depMemo[fileLoc]
+
+                    parseFullResult (Some fileLoc) { stdCtx with defCtx = defCtx } preParsedLines
+                    |> map (fun orderedFile ->
+                        { location = fileLoc; content = orderedFile }
+                    )
+                )
+                |> combineResultsToArray
+
+            let mainFileContent = parseFullResult mainFileLoc { stdCtx with defCtx = mainFileDefCtx } preParsedLines
+
+            match (mainFileContent, otherFiles) with
+            | Ok mainFileContent, Ok otherFiles -> 
+                Ok {
+                    mainFile = {
+                        maybeLocation = mainFileLoc
+                        content = mainFileContent
+                    }
+                    secondaryFiles = otherFiles
+                }
+            | _ -> joinErrorTuple (mainFileContent, otherFiles) |> Error
         )
-        |> bind (fun (mainFile, stdFiles) -> 
-            mainFile.maybeLocation
-            |> Option.map (findOtherClacFiles mainFile.content)
-            |> Option.defaultValue [||]
-            |> loadOtherFiles stdCtx 
-            |> map (fun otherFiles -> mainFile, otherFiles, stdFiles)
-        )
-        |> map (fun (mainFile, otherFiles, stdFiles) -> 
-            { mainFile = mainFile; secondaryFiles = Array.concat [otherFiles; stdFiles] }
-        )
 
-    let loadOtherFiles stdCtx fileLocs : FullClacResult<File array> = loadAllFilesInner stdCtx fileLocs
+    type depMemo = Map<string, DefinitionContext>
+    type fileContentsMemo = Map<string, (int * UnparsedLine) array>
 
-    let findOtherClacFiles lines fileLoc =
-        let dir = System.IO.Path.GetDirectoryName fileLoc
-        let references = lines.moduleReferences |> Array.map (fun x -> Files.toQualifiedFileLoc dir x)
+    let rec loadDefCtxFromDependencies (fileContentsMemo: fileContentsMemo) (depMemo: depMemo) (fileLoc: string) : FullClacResult<DefinitionContext * depMemo * fileContentsMemo> =
+        if depMemo.ContainsKey fileLoc then (depMemo[fileLoc], depMemo, fileContentsMemo) |> Ok else
 
-        let fileIsReferenced (path: string) = references |> Array.contains (System.IO.Path.GetExtension path)
-        
-        System.IO.Directory.GetFiles dir
-        |> Array.filter (fun x -> x <> fileLoc && fileIsReferenced x)
-
-    let loadMainFile stdCtx mainFile : FullClacResult<MainFile> =
-        match mainFile with
-        // find a workaround for interactive main files
-        | Interactive s -> 
-        | File file -> 
-
-    // work with mailFileLoc
-    let rec loadAllFilesInner stdCtx (mailFileLoc: string) : FullClacResult<File array> =
-        let determineDependencies (currentDir: string) preParsedLines =
-            preParsedLines
-            |> Array.choose (fun (i, line) -> match line with | UnparsedModuleReference s -> Some s | _ -> None)
-            |> Array.map (Files.toQualifiedFileLoc currentDir)
-        
-        let preparseFile (fileLoc: string) =
-            fileLoc
-            |> tryReadFileIntermedExc
-            |> bind (preparse stdCtx)
-            |> toFullResult (Some fileLoc)
-
-        let getDir (fileLoc: string) = getDirOfReference (Some fileLoc)
-        
-        let buildDepMap filesPreParsedLines =
-            filesPreParsedLines
-            |> Array.map (fun (fileLoc, preParsedLines) -> fileLoc, determineDependencies (getDir fileLoc) preParsedLines)
-            |> Map.ofArray
-
-        let rec loadDefCtxFromDependencies (depMap: Map<string, string array>) (fileContentsMap: Map<string, (int * UnparsedLine) array>) (depMemo: Map<string, DefinitionContext>) fileLoc : DefinitionContext * Map<string, DefinitionContext> =
-            if depMemo.ContainsKey fileLoc then (depMemo.[fileLoc], depMemo) else
-
-            let localDefinedSymbols = extractCustomDefinitions fileContentsMap[fileLoc]
-            let dependencies = depMap[fileLoc]
+        // if it isnt in depMemo, it isnt in fileContentsMemo
+        preparseFile fileLoc 
+        |> bind (fun content -> 
+            let fileContentsMemoWithThisFile = Map.add fileLoc content fileContentsMemo
+            let localDefinedSymbols = extractCustomDefinitions content
+            let dependencies = determineDependencies (getDirOfReference (Some fileLoc)) content
 
             Array.fold (fun acc dep -> 
-                let (accDefCtx, depMemo) = acc
-                let (depDefCtx, depMemoNew) = loadDefCtxFromDependencies depMap fileContentsMap depMemo dep
-                let depMemoNew2 = Map.add dep depDefCtx depMemoNew
-                {
-                    types = Array.concat [accDefCtx.types; depDefCtx.types]; 
-                    functions = Array.concat [accDefCtx.functions; depDefCtx.functions]
-                }, depMemoNew2
-            ) (localDefinedSymbols, depMemo) dependencies
+                acc
+                |> bind (fun (accDefCtx, depMemo, fileContentsMemo) ->
+                    loadDefCtxFromDependencies fileContentsMemo depMemo dep
+                    |> bind (fun (depDefCtx, depMemoNew, fileContentsMemoNew) ->
+                        let depMemoNew2 = Map.add dep depDefCtx depMemoNew
 
-        let filesPreParsedLines = 
-            fileLocs
-            |> Array.map preparseFile
-            |> combineResultsToArray
-            |> map (Array.zip fileLocs)
-
-        filesPreParsedLines
-        |> map (fun filesPreParsedLines ->
-            let depMap = buildDepMap filesPreParsedLines
-            let fileContentsMap = filesPreParsedLines |> Map.ofArray
-
-            filesPreParsedLines
-            |> Array.map (fun (fileLoc, preParsedLines) -> 
-                let (defCtx, _) = loadDefCtxFromDependencies depMap fileContentsMap Map.empty fileLoc
-                fileLoc, preParsedLines, defCtx
-            )
-        )
-        |> bind (fun filesTuple ->
-            filesTuple
-            |> Array.map (fun (fileLoc, preParsedLines, defCtx) ->
-                parseFullResult (Some fileLoc) { stdCtx with defCtx = defCtx} preParsedLines
-                |> map (fun orderedFile ->
-                    { location = fileLoc; content = orderedFile }
+                        Ok ({
+                            types = Array.concat [accDefCtx.types; depDefCtx.types]; 
+                            functions = Array.concat [accDefCtx.functions; depDefCtx.functions]
+                        }, depMemoNew2, fileContentsMemoNew)
+                    )
                 )
-            )
-            |> combineResultsToArray
+            ) (Ok (localDefinedSymbols, depMemo, fileContentsMemoWithThisFile)) dependencies
         )
+    
+    let determineDependencies (currentDir: string) preParsedLines =
+        preParsedLines
+        |> Array.choose (fun (i, line) -> match line with | UnparsedModuleReference s -> Some s | _ -> None)
+        |> Array.map (Files.toQualifiedFileLoc currentDir)
+
+    let preparseFile (fileLoc: string) =
+        fileLoc
+        |> tryReadFileIntermedExc
+        |> bind preparse
+        |> toFullResult (Some fileLoc)
         
     let tryReadFileIntermedExc file : IntermediateClacResult<string> =
         tryReadFile file |> toIntermediateExcWithoutLine

@@ -8,66 +8,82 @@ open Clac2.MiddleEnd
 open FSharp.Core.Result
 open Clac2.Language
 
+type depMap = Map<string option, DefinitionContext>
+type fileContentsMemo = Map<string option, (int * UnparsedLine) array>
+
 module FileLoading =
 
-    let loadAndParseFiles (stdCtx: StandardContext) (unparsedMainFile: MainFileUnparsed) : FullClacResult<Program> =
+    let loadAndParseFiles (stdCtx: StandardContext) (unparsedMainFile: MainFileUnparsed) : FullClacResult<Program * depMap> =
         match unparsedMainFile with
-        | Interactive s -> loadAllFilesInner stdCtx Files.standardFileLocations None s
-        | File f -> f |> tryReadFileIntermedExc |> toFullResult (Some f) |> loadAllFilesInner stdCtx Files.standardFileLocations (Some f)
+        | Interactive s -> loadAllFilesInner stdCtx None s
+        | File f -> f |> tryReadFileIntermedExc |> toFullResult (Some f) |> bind (loadAllFilesInner stdCtx (Some f))
 
-    let loadAllFilesInner stdCtx (baseDeps: string array) (mainFileLoc: string option) (mailFileLines: string) : FullClacResult<Program> =
-        // fix string vs string option disparity
-        // initialize memos with main file ?
-        // fileLoc parameter should be string option, mmaybe
-        // use  baseDeps
-        loadDefCtxFromDependencies Map.empty Map.empty mainFileLoc
-        |> bind (fun (mainFileDefCtx, depMemo, fileContentsMemo) ->
-            let otherFiles = 
+    let loadAllFilesInner stdCtx (mainFileLoc: string option) (mailFileLines: string) : FullClacResult<Program * depMap> =
+        mailFileLines 
+        |> preparse
+        |> toFullResult mainFileLoc
+        |> bind (fun lines -> 
+            let startFileContentsMemo = [(mainFileLoc, lines)] |> Map.ofList
+            loadDefCtxFromDependencies stdCtx.defCtx startFileContentsMemo Map.empty Files.standardFileLocations [] mainFileLoc
+            |> map (fun v -> lines, v)
+        )
+        |> bind (fun (mainFileLines, dependencyResult) ->
+            let (mainFileDefCtx, depMap, fileContentsMemo) = dependencyResult
+
+            // use mainFileDefCtx, not over depmap, as it does not contain the first one (the main file)
+            let mainFileDefCtx' = DefCtx.mergeDefCtxFromStdCtx stdCtx mainFileDefCtx
+            let maybeMainFile = 
+                parseFullResult mainFileLoc mainFileDefCtx' mainFileLines
+                |> map (fun orderedFile -> { maybeLocation = mainFileLoc; content = orderedFile })
+
+            let maybeOtherFiles = 
                 fileContentsMemo
                 |> Map.toArray
+                |> Array.filter (fun (loc, _) -> loc.IsSome && loc <> mainFileLoc)
+                |> Array.map (fun (k,v) -> k.Value, v)
                 |> Array.map (fun (fileLoc, preParsedLines) ->
-                    let defCtx = depMemo[fileLoc]
-
-                    parseFullResult (Some fileLoc) { stdCtx with defCtx = defCtx } preParsedLines
-                    |> map (fun orderedFile ->
-                        { location = fileLoc; content = orderedFile }
-                    )
+                    parseFullResult (Some fileLoc) (DefCtx.getDefCtxWithStdCtxFromMap stdCtx depMap (Some fileLoc)) preParsedLines
+                    |> map (fun orderedFile -> { location = fileLoc; content = orderedFile })
                 )
                 |> combineResultsToArray
 
-            let mainFileContent = parseFullResult mainFileLoc { stdCtx with defCtx = mainFileDefCtx } preParsedLines
-
-            match (mainFileContent, otherFiles) with
-            | Ok mainFileContent, Ok otherFiles -> 
-                Ok {
-                    mainFile = {
-                        maybeLocation = mainFileLoc
-                        content = mainFileContent
-                    }
-                    secondaryFiles = otherFiles
-                }
-            | _ -> joinErrorTuple (mainFileContent, otherFiles) |> Error
+            joinTwoResults maybeMainFile maybeOtherFiles
+            |> map (fun (mainFile, otherFiles) -> { mainFile = mainFile; secondaryFiles = otherFiles })
+            |> map (fun program -> program, depMap)
         )
 
-    type depMemo = Map<string, DefinitionContext>
-    type fileContentsMemo = Map<string, (int * UnparsedLine) array>
+    let rec loadDefCtxFromDependencies (baseDefCtx: DefinitionContext) (fileContentsMemo: fileContentsMemo) (depMemo: depMap) (baseDeps: string array) (filesHigherUp: string option list) (maybeFileLoc: string option) : FullClacResult<DefinitionContext * depMap * fileContentsMemo> =
+        let buildInnerException e = e |> Error |> toGenericResult |> toIntermediateResultWithoutLine |> toFullResult maybeFileLoc
+        
+        if List.contains maybeFileLoc filesHigherUp then buildInnerException ("Circular import of " + fileLocOptionToString maybeFileLoc) else
+        if depMemo.ContainsKey maybeFileLoc then (depMemo[maybeFileLoc], depMemo, fileContentsMemo) |> Ok else
 
-    let rec loadDefCtxFromDependencies (fileContentsMemo: fileContentsMemo) (depMemo: depMemo) (fileLoc: string) : FullClacResult<DefinitionContext * depMemo * fileContentsMemo> =
-        if depMemo.ContainsKey fileLoc then (depMemo[fileLoc], depMemo, fileContentsMemo) |> Ok else
-
-        // if it isnt in depMemo, it isnt in fileContentsMemo
-        preparseFile fileLoc 
+        match fileContentsMemo.TryFind maybeFileLoc with
+        | Some content -> Ok content
+        | None -> 
+            maybeFileLoc
+            |> Option.map (preparseFile)
+            |> Option.defaultValue (buildInnerException "Internal error: FileContentsMap does not contain interactive file")
         |> bind (fun content -> 
-            let fileContentsMemoWithThisFile = Map.add fileLoc content fileContentsMemo
             let localDefinedSymbols = extractCustomDefinitions content
-            let dependencies = determineDependencies (getDirOfReference (Some fileLoc)) content
+            let dependencies = 
+                Array.concat [
+                    // base deps are not imported if the file is a base dep itself
+                    (if maybeFileLoc.IsNone || (Array.contains maybeFileLoc.Value baseDeps |> not) then baseDeps else [||])
+                    // declared dependencies
+                    determineDependencies (getDirOfReference maybeFileLoc) content
+                ] 
+                |> Array.distinct
+
+            let fileContentsMemoWithThisFile = Map.add maybeFileLoc content fileContentsMemo
 
             Array.fold (fun acc dep -> 
                 acc
                 |> bind (fun (accDefCtx, depMemo, fileContentsMemo) ->
-                    loadDefCtxFromDependencies fileContentsMemo depMemo dep
+                    // non-main files can not be None - this is crucial
+                    loadDefCtxFromDependencies baseDefCtx fileContentsMemo depMemo baseDeps (maybeFileLoc::filesHigherUp) (Some dep)
                     |> bind (fun (depDefCtx, depMemoNew, fileContentsMemoNew) ->
-                        let depMemoNew2 = Map.add dep depDefCtx depMemoNew
+                        let depMemoNew2 = Map.add (Some dep) depDefCtx depMemoNew
 
                         Ok ({
                             types = Array.concat [accDefCtx.types; depDefCtx.types]; 
@@ -90,7 +106,7 @@ module FileLoading =
         |> toFullResult (Some fileLoc)
         
     let tryReadFileIntermedExc file : IntermediateClacResult<string> =
-        tryReadFile file |> toIntermediateExcWithoutLine
+        tryReadFile file |> toIntermediateResultWithoutLine
 
     let tryReadFile file : GenericResult<string> =
         try
@@ -101,16 +117,33 @@ module FileLoading =
 
 module TypeChecking = 
 
-    let checkTypes stdCtx (program: Program) : FullClacResult<Program> =
+    let validateProgramTypes stdCtx (programAndDepMap: Program * depMap) : FullClacResult<Program> =
+        let (program, depMap) = programAndDepMap
+
         let validateFileArray (fileArr: File array) =
             fileArr
             |> Array.map (fun file -> file.location, file.content)
-            |> Array.map (fun (loc, lines) -> Some loc, lines |> TypeChecking.validateTypes stdCtx)
+            |> Array.map (fun (loc, orderedFile) -> 
+                Some loc, orderedFile |> TypeChecking.validateTypes stdCtx program
+            )
             |> Array.map tupledToFullExc
             |> combineResultsToArray
-        
+
         program.mainFile.content
-        |> (TypeChecking.validateTypes stdCtx)
+        |> (TypeChecking.validateTypes stdCtx program)
         |> toFullResult program.mainFile.maybeLocation
         |> bind (fun _ -> validateFileArray program.secondaryFiles)
         |> map (fun _ -> program)
+
+module DefCtx =
+    let getDefCtxWithStdCtxFromMap stdCtx (depMap: depMap) fileLoc =
+        mergeDefCtx stdCtx.defCtx depMap[fileLoc]
+    
+    let mergeDefCtxFromStdCtx stdCtx defCtx =
+        mergeDefCtx stdCtx.defCtx defCtx
+
+    let mergeDefCtx defCtx1 defCtx2 =
+        {
+            types = Array.concat [defCtx1.types; defCtx2.types]
+            functions = Array.concat [defCtx1.functions; defCtx2.functions]
+        }

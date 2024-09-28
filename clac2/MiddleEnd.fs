@@ -4,35 +4,54 @@ open Clac2.Domain
 open Clac2.Utilities
 open Clac2.DomainUtilities
 
+
 module TypeChecking =
-    let validateTypes (stdCtx: StandardContext) (file: OrderedFile): IntermediateClacResult<OrderedFile> =
-        match checkTypesInner stdCtx file with
+    type TypeCheckingCtx = {
+        types: Map<string, TypeDefinition>
+        signatures: Map<string, Signature>
+    }
+
+    let validateTypes (stdCtx: StandardContext) (program: Program) (file: OrderedFile) : IntermediateClacResult<OrderedFile> =
+        match validateTypesInner stdCtx program file with
         | None -> Ok file
         | Some e -> Error e
 
-    let checkTypesInner (stdCtx: StandardContext) (file: OrderedFile) : IntermediateException option = 
-        // check types, then manipulations, then assignemtns
+    // check types, then manipulations, then assignments
+    let validateTypesInner (stdCtx: StandardContext) (program: Program) (file: OrderedFile) : IntermediateException option = 
 
-        let customTypeMap = file.typeDefinitions |> Array.map (fun x -> x.name, x) |> Map.ofArray
-
-        let functionSignatureMap = 
-            [
-                stdCtx.definedCtx.functions |> Array.map (fun x -> x.name, x.signature)
-                file.assignments |> Array.map (fun x -> x.name, x.signature)
-            ] 
+        let allTypeDefinitions = 
+            program.secondaryFiles
+            |> Array.map (fun f -> f.content.typeDefinitions)
             |> Array.concat
-            |> Map.ofArray
+            |> Array.append file.typeDefinitions 
 
-        let customFnsMap = 
-            file.assignments 
+        let typeMap = 
+            allTypeDefinitions
             |> Array.map (fun x -> x.name, x) 
             |> Map.ofArray
 
-        checkTypeDefinitions stdCtx file.typeDefinitions customTypeMap 
-        |> Option.orElse (checkManipulations customFnsMap functionSignatureMap file.expressions)
-        |> Option.orElse (checkAssignments customFnsMap functionSignatureMap file.assignments) 
+        // only secondary files are added, excluding the main file
+        let functionSignatureMap = 
+            [
+                file.assignments |> Array.map (fun x -> x.name, x.signature)
+                program.secondaryFiles |> Array.map (fun f -> f.content.assignments |> Array.map (fun x -> x.name, x.signature)) |> Array.concat
+                stdCtx.definedCtx.functions |> Array.map (fun x -> x.name, x.signature)
+            ] 
+            |> Array.concat
+            |> Map.ofArray
+        
+        let typeCheckingCtx = {
+            // customFns = customFnsMap
+            types = typeMap
+            signatures = functionSignatureMap
+        }
 
-    let checkTypeDefinitions (stdCtx: StandardContext) customTypes customTypeMap : IntermediateException option =    
+        checkTypeDefinitions stdCtx file.typeDefinitions typeMap 
+        |> Option.orElse (checkManipulations typeCheckingCtx file.expressions)
+        |> Option.orElse (checkAssignments typeCheckingCtx file.assignments) 
+
+    // not necessary to check all types, only custom ones (will run for each file)
+    let checkTypeDefinitions (stdCtx: StandardContext) customTypes typeMap : IntermediateException option =    
         // no recursive type definitions - type system is a tree
         let rec checkTypeDefsInner (customTypeMap: Map<string,TypeDefinition>) (typesHigherUp: string list) (x: TypeDefinition) =
             let rec flattenSignature (x: FnType) =
@@ -51,19 +70,19 @@ module TypeChecking =
 
                 let line = getLineType customTypeMap x
                 if List.contains x typesHigherUp' then Some(IntermediateExcFPPure ("Recursive type definition: " + x) line) else 
-                if Map.containsKey x customTypeMap |> not then Some(IntermediateExcFPPure ("Type not defined: " + x) line) else
+                if Map.containsKey x customTypeMap |> not then Some(IntermediateExcFPPure ("Unknown type: " + x) line) else
 
                 checkTypeDefsInner customTypeMap typesHigherUp' customTypeMap[x]
             )
         
-        Array.tryPick (checkTypeDefsInner customTypeMap []) customTypes
+        Array.tryPick (checkTypeDefsInner typeMap []) customTypes
 
-    let checkManipulations customFnsMap functionSignatureMap manipulations : IntermediateException option =
+    let checkManipulations typeCheckingCtx manipulations : IntermediateException option =
         manipulations
-        |> Array.map (fun x -> x.manipulation)
-        |> Array.tryPick (checkManipulation customFnsMap functionSignatureMap)
+        |> Array.map (fun x -> x.loc.lineLocation, x.manipulation)
+        |> Array.tryPick (fun (i, x) -> checkManipulation typeCheckingCtx x i)
 
-    let rec checkManipulation customFnsMap functionSignatureMap (m: Reference array) = 
+    let rec checkManipulation typeCheckingCtx (m: Reference array) line = 
         let typesMatch inputSignature args f =
             args
             |> Array.zip inputSignature
@@ -75,38 +94,20 @@ module TypeChecking =
         | Fn f ->
             if isPrimitive f then None else
 
-            let line = getLine customFnsMap f
+            if not (typeCheckingCtx.signatures.ContainsKey f) then Some (IntermediateExcWithoutLine (GenExc ("Internal Error: customFnsMap does not contain function " + f))) else
 
-            let signature = functionSignatureMap[f]
+            let line = getAssignmentLine typeCheckingCtx.types f |> Option.orElse (getLineType typeCheckingCtx.types f)
+
+            let signature = typeCheckingCtx.signatures[f]
             let inputSignature= signature[..signature.Length-2]
-            if inputSignature.Length > m.Length - 1 then Some (IntermediateExcFPPure ("Too few arguments for function: " + f) line) else
+            if inputSignature.Length <> m.Length - 1 then Some (IntermediateExcFPPure ("Invalid number of arguments: " + f) line) else
 
             let args = m[1..inputSignature.Length]
-            let typesOfArgs = args |> Array.map (ReferenceToFnType functionSignatureMap)
+            let typesOfArgs = args |> Array.map (ReferenceToFnType typeCheckingCtx.signatures)
 
-            if m.Length - 1 = inputSignature.Length then typesMatch inputSignature typesOfArgs f |> Option.map (IntermediateExc line) else
+            typesMatch inputSignature typesOfArgs f |> Option.map (IntermediateExcMaybeLine line)
 
-            // prevent Array.last from throwing exception
-            if inputSignature.Length = 0 then Some (IntermediateExcFPPure ("Too many arguments for function " + f) line) else
-
-            // check the other types
-            let typesUntilLastMatch = typesMatch inputSignature[..inputSignature.Length-2] typesOfArgs[..typesOfArgs.Length-2] f
-            if typesUntilLastMatch |> Option.isSome then typesUntilLastMatch |> Option.map (IntermediateExc line) else
-
-            // if too many arguments exist, try to pass them into the last argument
-            let lastArg = args |> Array.last
-
-            match lastArg with
-            // extra case needed for clarity
-            | Fn f' -> 
-                let lastInputType = inputSignature |> Array.last
-                let outputSignature' = functionSignatureMap[f'] |> Array.last
-
-                if lastInputType <> outputSignature' then Some(IntermediateExcFPPure (sprintf "Argument type mismatch: Expected %A, but got %A. Trying to push superfluous arguments of function %s to last element." lastInputType outputSignature' f) line) else
-
-                checkManipulation customFnsMap functionSignatureMap m[inputSignature.Length..]
-
-    let checkAssignments customFnsMap functionSignatureMap customAssignments : IntermediateException option =
+    let checkAssignments typeCheckingCtx customAssignments : IntermediateException option =
         let checkAssignment (assignment: CallableFunction) =
             let argumentsAsAssignments = 
                 assignment.args 
@@ -115,8 +116,9 @@ module TypeChecking =
                 )
                 |> Map.ofArray
 
-            let newfnSignatureMap = Map.merge argumentsAsAssignments functionSignatureMap
-            checkManipulation customFnsMap newfnSignatureMap assignment.fn
+            let newfnSignatureMap = Map.merge argumentsAsAssignments typeCheckingCtx.signatures
+            let newTypeCheckingCtx = { typeCheckingCtx with signatures = newfnSignatureMap }
+            checkManipulation newTypeCheckingCtx assignment.fn assignment.loc.lineLocation
 
         Array.tryPick checkAssignment customAssignments
 
@@ -129,5 +131,5 @@ let ReferenceToFnType (functionSignatureMap: Map<string,FnType array>) (x: Refer
         // variables are treated as functions within FnType, but can not be within the Reference type
         if s.Length = 1 then s[0] else Function s
 
-let getLine customFnsMap f = customFnsMap[f].loc.lineLocation
-let getLineType customTypes f = customTypes[f].loc.lineLocation
+let getAssignmentLine customFnsMap f : int option = if customFnsMap.ContainsKey f then Some customFnsMap[f].loc.lineLocation else None
+let getLineType customTypes f : int option = if customTypes.ContainsKey f then Some customTypes[f].loc.lineLocation else None

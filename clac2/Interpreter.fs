@@ -7,79 +7,66 @@ open Clac2.DomainUtilities
 
 let evaluateFile (stdCtx: StandardContext) (program: Program) : FullClacResult<DefinedValue> array =
     let dummyLoc = { fileLocation = None; lineLocation = 0 }
+    // stdCtx must not be used after following line - its data is incomplete compared to the program and evalCtx
     let evalCtx = EvalCtx.init stdCtx program dummyLoc
 
-    program.mainFile.content.expressions
-    |> Array.map (fun freeManip -> evaluateOne evalCtx freeManip.loc freeManip.manipulation)
+    printfn "%A" program.mainFile.content.expressions
 
-let evaluateOne evalCtx loc manipulation  =
+    program.mainFile.content.expressions
+    |> Array.map (fun freeManip -> evaluateOne evalCtx freeManip.loc freeManip.manipulation Map.empty)
+
+let evaluateOne evalCtx loc manipulation substitutions  =
+    printfn "evaluateOne for %A" manipulation
+    printfn "- subs: %A" substitutions
     let newEvalCtx = { evalCtx with currentLoc = loc }
-    manipulation
-    |> fun m -> m[0], substituteMany newEvalCtx Map.empty m[1..]
-    |> fun (startFn, args) -> args |> bind (eval newEvalCtx startFn)
+
+    // error here - x not substituted with 3 in function id
+    // "id 3" is not treated as a separate manipulation
+    if manipulation.Length = 1 then substituteOne newEvalCtx substitutions manipulation[0] else
+
+    let substitutedManipulationTail = substituteMany newEvalCtx substitutions manipulation[1..]
+    printfn "- subsManip: %A" substitutedManipulationTail
+
+    substitutedManipulationTail
+    |> bind (eval newEvalCtx manipulation[0])
+
+let substituteMany evalCtx (substitutions: Map<string, DefinedValue>) m : FullClacResult<DefinedValue array> = 
+    m |> Array.map (substituteOne evalCtx substitutions) |> combineResultsToArray
 
 let rec substituteOne evalCtx (substitutions: Map<string, DefinedValue>) x : FullClacResult<DefinedValue> =
     match x with
     | Fn f -> 
+        printfn "substituteOne %s with %A" f substitutions
+
         if isPrimitive f then f |> readPrimitive |> DefinedPrimitive |> Ok else
 
         // substitutions first to override globally defined functions
         if substitutions.ContainsKey f then substitutions[f] |> Ok else
 
-        if evalCtx.customAssignmentMap.ContainsKey f then evaluateOne evalCtx evalCtx.customAssignmentMap[f].loc evalCtx.customAssignmentMap[f].fn else
+        if evalCtx.customAssignmentMap.ContainsKey f then evaluateOne evalCtx evalCtx.customAssignmentMap[f].loc evalCtx.customAssignmentMap[f].fn Map.empty else
         if evalCtx.stdFunctionsMap.ContainsKey f then toDefinedFn evalCtx f |> Ok else
         
-        FullExcFromEvalCtx ("Function not found: " + f) evalCtx
-
-let substituteMany evalCtx (substitutions: Map<string, DefinedValue>) m : FullClacResult<DefinedValue array> = 
-    m |> Array.map (substituteOne evalCtx substitutions) |> combineResultsToArray
+        FullExcFromEvalCtx ("Function not found (at evaluation during substitution): " + f) evalCtx
 
 let rec eval evalCtx (startFn: Reference) (args: DefinedValue array) : FullClacResult<DefinedValue> =
-    let buildArgs evalCtx (argsBefore: DefinedValue array) (signature: FnType array) : FullClacResult<DefinedValue array> =
-        if argsBefore.Length = signature.Length - 1 then argsBefore |> Ok else 
-        
-        argsBefore[signature.Length - 2]
-        |> definedValueFnToReference evalCtx
-        |> bind (fun startFn -> eval evalCtx (startFn) argsBefore[signature.Length - 1..])
-        |> map (fun lastArg -> argsBefore[0..signature.Length - 3] |> Array.append [| lastArg |])
-
+    
     match startFn with
-    | Fn f -> 
+    | Fn f ->
+        printfn "--- eval %s with %A ---" f args
 
         if isPrimitive f then 
-            if args.Length <> 0 then FullExcFromEvalCtx ("Primitive " + f + " used as function.") evalCtx else
-
-            f |> readPrimitive |> DefinedPrimitive |> Ok
+            if args.Length = 0 then f |> readPrimitive |> DefinedPrimitive |> Ok else FullExcFromEvalCtx ("Primitive " + f + " used as function.") evalCtx
         else
-
-        f
-        |> getSignature evalCtx
-        |> toFullExcFromEvalCtx evalCtx
-        |> bind (fun signature -> 
-            buildArgs evalCtx args signature 
-            |> map (fun args -> signature, args)
-        )
-        |> bind (fun (signature, args) ->
             if evalCtx.stdFunctionsMap.ContainsKey f then evalCtx.stdFunctionsMap[f].DefinedFn args |> toGenericResult |> toFullExcFromEvalCtx evalCtx else
-            
+            if evalCtx.customAssignmentMap.ContainsKey f |> not then FullExcFromEvalCtx ("Function " + f + " not found (at interpreter)") evalCtx else
+
             let fn = evalCtx.customAssignmentMap[f]
-            let evalCtxNew = { evalCtx with currentLoc = fn.loc }
-            let substitutions = Map.ofArray (args |> Array.zip fn.args)
-            let substitutedFns = substituteMany evalCtxNew substitutions fn.fn
-
-            if fn.fn.Length = 1 then substitutedFns |> map (fun fns -> fns[0]) else
-
-            //if args.Length <> signature.Length - 1 then 
-                // curry function
-
-            //else 
-            substitutedFns
-            |> bind (fun fns -> eval evalCtxNew fn.fn[0] fns[1..])
-        )
-
+            let substitutions = args |> Array.zip fn.args |> Map.ofArray
+            evaluateOne evalCtx fn.loc fn.fn substitutions
+        
 let toDefinedFn evalCtx f = DefinedFn (evalCtx.stdFunctionsMap[f].name, evalCtx.stdFunctionsMap[f].DefinedFn)
 
-let definedValueFnToReference evalCtx (v: DefinedValue) : FullClacResult<Reference> =
+let definedFnToReference evalCtx (v: DefinedValue) : FullClacResult<Reference> =
     match v with
-    | DefinedPrimitive p -> FullExcFromEvalCtx "Primitive used as function." evalCtx
+    | DefinedPrimitive p -> FullExcFromEvalCtx ("Primitive " + string p + " used as function.") evalCtx
     | DefinedFn (name, _) -> Fn name |> Ok

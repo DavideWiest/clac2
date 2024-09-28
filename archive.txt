@@ -1,0 +1,38 @@
+let buildArgs evalCtx (argsBefore: DefinedValue array) (signature: FnType array) : FullClacResult<DefinedValue array> =
+        if argsBefore.Length = signature.Length - 1 then argsBefore |> Ok else
+        
+        argsBefore[signature.Length - 2]
+        |> definedValueFnToReference evalCtx
+        |> bind (fun startFn -> eval evalCtx startFn argsBefore[signature.Length - 1..])
+        |> map (fun lastArg -> Array.concat [argsBefore[0..signature.Length - 3]; [| lastArg |]])
+
+middle end: checkManipulation
+
+            // prevent Array.last from throwing exception
+            if inputSignature.Length = 0 then Some (IntermediateExcFPPure ("Too many arguments for function " + f) line) else
+
+            // check the other types
+            let typesUntilLastMatch = typesMatch inputSignature[..inputSignature.Length-2] typesOfArgs[..typesOfArgs.Length-2] f
+            if typesUntilLastMatch |> Option.isSome then typesUntilLastMatch |> Option.map (IntermediateExcMaybeLine line) else
+
+            // if too many arguments exist, try to pass them into the last argument
+            let lastArg = args |> Array.last
+
+            match lastArg with
+            | Fn f' -> 
+                let lastInputType = inputSignature |> Array.last
+                let outputSignature' = functionSignatureMap[f'] |> Array.last
+
+                if lastInputType <> outputSignature' then Some(IntermediateExcFPPure (sprintf "Argument type mismatch: Expected %A, but got %A. Trying to push superfluous arguments of function %s to last element." lastInputType outputSignature' f) line) else
+
+                checkManipulation customFnsMap functionSignatureMap m[inputSignature.Length..]
+
+middle end: entry Fn
+
+        let customFnsMap = 
+            program.secondaryFiles
+            |> Array.map (fun f -> f.content.assignments)
+            |> Array.concat
+            |> Array.append file.assignments
+            |> Array.map (fun x -> x.name, x) 
+            |> Map.ofArray

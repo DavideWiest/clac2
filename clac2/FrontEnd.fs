@@ -31,7 +31,7 @@ type UnparsedTypeDefinition = {
 }
 
 let parseFull fileLoc (stdCtx: StandardContext) (input: string) : FullClacResult<OrderedFile> =
-    preparse input |> toFullResult fileLoc |> bind (parseFullResult fileLoc stdCtx)
+    preparse input |> toFullResult fileLoc |> bind (parseFullResult fileLoc stdCtx.defCtx)
 
 let preparse (input: string) : IntermediateClacResult<(int * UnparsedLine) array> =
     input
@@ -40,35 +40,43 @@ let preparse (input: string) : IntermediateClacResult<(int * UnparsedLine) array
     |> trimSplitIndexedArray [| ';' |]
     |> Array.filter (fun x -> (snd x) <> "")
     |> Array.filter (fun x -> not ((snd x).StartsWith Syntax.commentIdentifer))
-    |> Array.map (unpackTuple ToUnparsedLine)
+    |> Array.map (applyUnpacked ToUnparsedLine)
     |> combineResultsToArray
 
-let parseFullResult fileLoc stdCtx preParsedLines = parse fileLoc stdCtx preParsedLines |> toFullResult fileLoc 
+let parseFullResult fileLoc defCtx preParsedLines = parse fileLoc defCtx preParsedLines |> toFullResult fileLoc 
 
-let parse fileLoc stdCtx (preParsedLines: (int * UnparsedLine) array) =    
-    let localDefCtx = extractCustomDefinitions preParsedLines
-    let definitionContext = { 
-        stdCtx.defCtx with types = Array.concat [localDefCtx.types; stdCtx.defCtx.types]; functions = Array.concat [localDefCtx.functions; stdCtx.defCtx.functions] 
-    }
-    
-    let maybeFunctionDuplicate = hasDuplicatesByReturningFirstWithIndex definitionContext.functions id
-    if maybeFunctionDuplicate.IsSome then IntermediateExcFromParts ("Duplicate function definition for: " + (maybeFunctionDuplicate.Value |> snd)) (maybeFunctionDuplicate.Value |> fst) else
+let parse fileLoc defCtx (preParsedLines: (int * UnparsedLine) array) =  
+    let (localTypesWithLines, localFunctionsWithLines) = extractCustomDefinitionsWithLine preParsedLines
 
-    let maybeTypeDuplicate = hasDuplicatesByReturningFirstWithIndex definitionContext.types id
-    if maybeTypeDuplicate.IsSome then IntermediateExcFromParts ("Duplicate type definition for: " + (maybeTypeDuplicate.Value |> snd)) (maybeTypeDuplicate.Value |> fst) else
+    let duplicationError arr source symbolName = 
+        let maybeDup = chooseHigherOccurenceElements 1 arr source |> Array.tryHead
+        match maybeDup with
+        | Some (dupLine, dupName) -> IntermediateExcFromParts ("Duplicate " + symbolName + " definition for: " + dupName) dupLine |> Some
+        | None -> None
 
-    printfn "Preparsed lines of %s %A" (fileLoc |> Option.defaultValue "interactive") preParsedLines
+    let dupFnResult = duplicationError localFunctionsWithLines defCtx.functions "function"
+    if dupFnResult.IsSome then Error dupFnResult.Value else
+    let dupTypeResult = duplicationError localTypesWithLines defCtx.types "type"
+    if dupTypeResult.IsSome then Error dupTypeResult.Value else
 
     preParsedLines
-    |> Array.map (fun (i, l) -> i, ParseLine (buildLoc fileLoc i) definitionContext l)
+    |> Array.map (fun (i, l) -> i, ParseLine (buildLoc fileLoc i) defCtx l)
     |> Array.map (fun (i, r) -> toIntermediateResult i r)
     |> combineResultsToArray
     |> map toOrderedFile
 
 let extractCustomDefinitions preParsedLines  =
-    let customTypes = preParsedLines |> Array.choose (fun (i, x) -> match x with | UnparsedTypeDefinition t -> Some t.name | _ -> None)
-    let customAssignments = preParsedLines |> Array.choose (fun (i, x) -> match x with | UnparsedAssignment f -> Some f.name | _ -> None)
-    { types = customTypes; functions = customAssignments }
+    let (localTypesWithLine, localFunctionWithLine) = preParsedLines |> extractCustomDefinitionsWithLine
+    {
+        types = localTypesWithLine |> Array.map snd
+        functions = localFunctionWithLine |> Array.map snd
+    }
+
+let extractCustomDefinitionsWithLine preParsedLines =
+    let localTypes = preParsedLines |> Array.choose (fun (i, x) -> match x with | UnparsedTypeDefinition t -> Some (i, t.name) | _ -> None)
+    let localFunctions = preParsedLines |> Array.choose (fun (i, x) -> match x with | UnparsedAssignment f -> Some (i, f.name) | _ -> None)
+    
+    localTypes, localFunctions
 
 let ToUnparsedLine (i: int) (line: string) : IntermediateClacResult<int * UnparsedLine> =
     line |> ToUnparsedLineInner |> toIntermediateResult i |> map (fun x -> (i, x))
@@ -100,30 +108,48 @@ let ToUnparsedCallableFunction (line: string) : GenericResult<UnparsedCallableFu
     let nameAndArgs = parts[1..firstColon-1]
     let name , args = nameAndArgs[0], nameAndArgs[1..]
     if Syntax.nameIsInvalid name then GenExcError ("Invalid function name: " + name) else
-    let signatureParts = parts[firstColon+1..firstEqual-1]
-    if (signatureParts |> Array.length) - 1 <> (args |> Array.length) then GenExcError "Function signature does not match number of arguments." else
-    if args |> Array.map Syntax.nameIsInvalid |> Array.exists id then GenExcError "Invalid argument name." else
 
-    let signature = signatureParts |> String.concat " "
-    let fnBody = parts[firstEqual+1..] |> String.concat " " |> ToUnparsedManipulation
+    match extractFullSignature parts[firstColon+1..firstEqual-1] with 
+    | Error e -> Error e 
+    | Ok signatureParts ->
+        if (signatureParts |> Array.length) - 1 <> (args |> Array.length) then GenExcError "Function signature does not match number of arguments." else
+        if args |> Array.map Syntax.nameIsInvalid |> Array.exists id then GenExcError "Invalid argument name." else
+        // checking if the types are valid names is not necessary - they are references to defined types, which are checked (elsewhere)
 
-    {
-        name = name
-        unparsedSignature = signature
-        args = args
-        fn = fnBody
-    } 
-    |> Ok
+        let signature = signatureParts |> String.concat " "
+        let fnBody = parts[firstEqual+1..] |> String.concat " " |> ToUnparsedManipulation
+
+        {
+            name = name
+            unparsedSignature = signature
+            args = args
+            fn = fnBody
+        } 
+        |> Ok
+
+let extractFullSignature rawSignature =
+    rawSignature
+    |> Array.map (fun typeRef ->
+        if not (typeRef.Contains '*') then Ok [| typeRef |] else 
+
+        let typeRefSplit = typeRef.Split '*'
+
+        if typeRefSplit.Length <> 2 then GenExcError ("Invalid type reference (asterisk found more than once): " + typeRef) else
+
+        Array.init (int typeRefSplit[1]) (fun _ -> typeRefSplit[0]) |> Ok
+    )
+    |> combineResultsToArray
+    |> map Array.concat
 
 // does not support precedence/nesting
 let ToUnparsedManipulation (line: string) = line |> trimSplit [| ' ' |]
 
 let ToUnparsedTypeDefinition (line: string) : GenericResult<UnparsedTypeDefinition> =
     let parts = line |> trimSplit [| ' ' |]
-    if parts.Length < 3 then GenExcError "Type definition missing parts. Missing space?" else
+    if parts.Length < 4 then GenExcError "Type definition missing parts. Missing space?" else
 
     let maybeFirstColon = parts |> Array.tryFindIndex (fun x -> x = ":")
-    if maybeFirstColon = None then GenExcError "Type definition missing a colon separated by spaces." else
+    if maybeFirstColon.IsNone then GenExcError "Type definition missing a colon separated by spaces." else
 
     let name = parts[1]
     if Syntax.nameIsInvalid name then GenExcError ("Invalid type name: " + name) else
@@ -153,8 +179,8 @@ let ParseCallableFunction loc (definitionContext: DefinitionContext) (f: Unparse
 
     let maybeFn = f.fn |> ParseManipulation {definitionContext with functions = Array.concat [definitionContext.functions; f.args]}
 
-    match (maybeSignature, maybeFn) with
-    | (Ok signature, Ok fn) ->
+    joinTwoResults maybeSignature maybeFn
+    |> bind (fun (signature, fn) ->
         {
             name = f.name
             signature = signature
@@ -162,7 +188,7 @@ let ParseCallableFunction loc (definitionContext: DefinitionContext) (f: Unparse
             fn = fn
             loc = loc
         } |> Ok
-    | errTuple -> errTuple |> joinErrorTuple |> Error
+    )
 
 let ParseManipulation (definitionContext: DefinitionContext) (m: UnparsedManipulation) : GenericResult<Manipulation> =
     m
@@ -193,13 +219,17 @@ let parseModuleDeclaration loc (line: string) : GenericResult<Line> =
         let dir = System.IO.Path.GetDirectoryName fileLoc
         
         // for now, module and files names must match
-        if line |> Files.toQualifiedFileLoc dir <> fileLoc then GenExcError "Module declaration does not match file location." else
+        if Files.toQualifiedFileLoc dir line <> fileLoc then GenExcError "Module declaration does not match file location." else
 
         line |> Files.toQualifiedFileLoc dir |> ModuleDeclaration |> Ok
 
 let parseModuleReference loc (line: string) : GenericResult<Line> =
     let dir = getDirOfReference loc.fileLocation
-    line |> Files.toQualifiedFileLoc dir |> ModuleReference |> Ok
+
+    line
+    |> Files.toQualifiedFileLoc dir 
+    |> ModuleReference 
+    |> Ok
 
 let getDirOfReference fileLoc =
     match fileLoc with

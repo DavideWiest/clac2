@@ -4,6 +4,12 @@ open Clac2.Domain
 open System
 open FSharp.Core.Result
 
+// Misc
+
+let passAndReturn f a = 
+    f a
+    a
+
 // Map
 
 module Map =
@@ -18,9 +24,9 @@ let getValues (m: Map<'a, 'b>) =
 
 // Tuple
 
-let unpackTuple f (i, x) = f i x
+let applyUnpacked f (i, x) = f i x
 
-let reverseTuple f (x, i) = f (i, x)
+let applyTupleReversed f (x, i) = f (i, x)
 
 // String
 
@@ -58,25 +64,23 @@ let combineResults (results: Result<'a, 'b> seq) =
 
 let combineResultsToArray result = result |> combineResults |> map Array.ofList
 
-let joinErrorTuple (results: Result<'a, 'b> * Result<'c, 'b>) = 
-    match results with
-    | Error e, _ -> e
-    | Ok _, Error e -> e
-    | _ -> failwith "Misused joinErrorTuple: both results are Ok"
-    
+let joinTwoResults (r1: Result<'a, 'b>) (r2: Result<'c, 'b>) =
+    match (r1, r2) with 
+    | Ok a, Ok b -> Ok (a,b)
+    | Error e, _ -> Error e
+    | _, Error e -> Error e
+
 // Array
 
 let hasDuplicatesBy (arr: 'a array) (f: 'a -> 'b) =
     arr |> Array.groupBy f |> Array.exists (fun (_, a) -> a.Length > 1)
 
-let hasDuplicatesByReturningFirstWithIndex (arr: 'a array) (f: (int * 'a) -> 'b) =
-    arr 
-    |> Array.mapi (fun i a -> i,a) 
-    |> Array.groupBy f
-    |> Array.filter (fun (_, a) -> a.Length > 1)
-    |> Array.map snd
-    |> Array.concat
-    |> Array.tryHead
+let chooseHigherOccurenceElements (count: int) (searchSelection: ('b * 'a) array) (source: 'a array) =
+    searchSelection
+    |> Array.filter (fun elem ->
+        let ocurrences = Array.sumBy (fun e2 -> if elem |> snd = e2 then 1 else 0) source
+        ocurrences > count
+    )
 
 // Misc base
 
@@ -103,14 +107,14 @@ let lineToString (line: Line) =
 
 // Primitives
 
-let rec definedValueToPrimitive (x: DefinedValue) =
+let rec definedValueToInt (x: DefinedValue) =
     match x with
         | DefinedPrimitive (PrimitiveInt i) -> Ok i
         | DefinedFn (_, fn) ->
             match fn [| |] with
-            | Ok(v) -> definedValueToPrimitive v
+            | Ok(v) -> definedValueToInt v
             | Error e -> Error e
-            | _ -> Error ("Internal Error: not an int as argument of fnTypeToIntAdapter: " + x.ToString())
+            | _ -> Error ("Internal Error: not an int as argument of definedValueToInt: " + x.ToString())
 
 let readPrimitive (p: string) =
     if Seq.forall Char.IsDigit p then p |> int |> PrimitiveInt else

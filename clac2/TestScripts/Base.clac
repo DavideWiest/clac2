@@ -1,5 +1,4 @@
 -- check parsing and assignment syntax validation
-let id x : int int = x
 let y : int = 5
 y
 let w : int = add 5 5
@@ -23,13 +22,18 @@ type basicArithmetic2 : int2 int2 int2
 -- type int6 : int5
 -- type int7 : int8
 
--- manipulations
-id 5
-add 5 5
-add 5 add 5 5
-e
-let plus3 a b c : int int int int = add a add b c
+-- Overloaded forwarding - no longer supported
+-- add 5 add 2 3
+-- let plus3 a b c : int int int int = add a add b c
 
 -- manipulations that should fail
 -- add id 5
 -- add id id
+
+-- check for duplication (should fail)
+-- let id x : int int = x
+
+-- passing of arguments
+let applyFive f : (int int) = f 5
+let add2 b : int int = add 2 b
+applyFive add2

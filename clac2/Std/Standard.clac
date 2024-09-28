@@ -1,0 +1,4 @@
+let id x : int int = x
+
+let first a b : int int int = a
+let second a b : int int int = b

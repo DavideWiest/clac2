@@ -76,6 +76,8 @@ type TypeDefinition = {
     loc: ProgramLocation
 }
 
+type Signature = FnType array
+
 type FnType =
     | BaseFnType of string
     | Function of FnType array

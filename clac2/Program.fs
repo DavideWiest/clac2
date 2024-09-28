@@ -6,15 +6,18 @@ open Clac2.Interpreter
 open FSharp.Core.Result
 open Clac2.Language
 
+// stdCtx for front/middle end and back end should be 2 different types
+
 [<EntryPoint>]
 let main args =
     let baseFuncsCombined = Array.concat [BuildIn.baseFuncs; BuildIn.baseVars]
-    let stdCtx = StandardContext.buildStandardContext baseFuncsCombined Types.supportedTypes 
+    let stdCtx = StandardContext.buildStandardContext baseFuncsCombined Types.baseTypes 
 
     args
     |> getInput
     |> FileLoading.loadAndParseFiles stdCtx
-    |> bind (TypeChecking.checkTypes stdCtx)
+    |> bind (TypeChecking.validateProgramTypes stdCtx)
+    |> map (passAndReturn printProgram)
     |> bind (fun program -> program |> evaluateFile stdCtx |> combineResultsToArray)
     |> (fun x ->
         match x with 
@@ -22,7 +25,7 @@ let main args =
             printfn "Evaluated:\n"
             results |> Array.iter (printfn "%A")
 
-        | Error e -> printFullExc e
+        | Error e -> printFullExc System.Environment.CurrentDirectory e
         
         x
     )

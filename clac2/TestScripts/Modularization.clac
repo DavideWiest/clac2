@@ -1,0 +1,6 @@
+-- importing a file
+open ../Std/Numeric
+open Base
+
+-- imported function and constant
+square y

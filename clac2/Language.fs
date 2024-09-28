@@ -13,19 +13,27 @@ module Syntax =
         || isPrimitive name
 
 module Types =
-    let supportedTypes = [| "int" |]
+    let baseTypes = [| "int" |]
 
     let intType = BaseFnType "int"
-    let floatType = BaseFnType "float"
 
 module Files =
     let officialExtensions = [| "clac" |]
-    let standardFileLocations = [| "scripts/Standard.clac" |]
-    let packageLocation = "clacPackages"
-    let toQualifiedFileLoc dir (importName: string) = System.IO.Path.Combine(dir, importName + if Array.exists (fun (ending: string) -> importName.EndsWith(ending)) Files.officialExtensions then "" else Files.officialExtensions[0]) 
+    let standardFileDir = "Std"
+    let standardFileLocations = 
+        [| "Standard.clac"; "Numeric.clac" |] 
+        |> Array.map (fun p -> System.IO.Path.Combine (standardFileDir, p)) 
+        |> Array.map System.IO.Path.GetFullPath
 
-module Modules = 
-    let reservedFirstOrderModules = [| "Clac", "Std" |]
+    let packageLocation = "clacPackages"
+    let toQualifiedFileLoc dir (fileRef: string) = 
+        fileRef.Split [| '/' |]
+        |> System.IO.Path.Combine
+        |> fun reference -> System.IO.Path.Combine(dir, reference + if Array.exists (fun (ending: string) -> reference.EndsWith(ending)) officialExtensions then "" else "." + officialExtensions[0]) 
+        |> System.IO.Path.GetFullPath
+
+// module Modules = 
+    // let reservedModuleName = [| "Clac", "Std" |]
 
 module BuildIn =
     let baseVars = 
@@ -82,6 +90,6 @@ module Conversion =
         if input.Length <> nArgs then Error "Internal Error: Wrong number of arguments for fnTypeToIntAdapter" else
 
         input
-        |> Array.map (definedValueToPrimitive)
+        |> Array.map (definedValueToInt)
         |> combineResultsToArray
         |> bind (f >> PrimitiveInt >> DefinedPrimitive >> Ok)

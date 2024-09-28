@@ -16,8 +16,6 @@ module EvalCtx =
             program.secondaryFiles
             |> Array.map (fun x -> x.content) |> Array.append [| file.content |]
 
-        printfn "allFiles: %A" allFiles
-
         {
             customAssignmentMap = 
                 allFiles
@@ -35,7 +33,7 @@ module EvalCtx =
 let getSignature evalCtx f =
     if evalCtx.stdFunctionsMap.ContainsKey f then evalCtx.stdFunctionsMap[f].signature |> Ok else 
     if evalCtx.customAssignmentMap.ContainsKey f then evalCtx.customAssignmentMap[f].signature |> Ok
-    else Error (GenExc ("Function not found: " + f))
+    else Error (GenExc ("Function not found (at evaluation): " + f))
 
 let buildLoc fileLoc lineLoc = { fileLocation = fileLoc; lineLocation = lineLoc }
 
@@ -55,16 +53,18 @@ let toGenericResult (result: Result<'a, string>) : GenericResult<'a> =
 // IntermediateGenericException and IntermediateClacResult
 
 let IntermediateExc (line: int) (e: GenericException) = { genExc = e; line = Some line }
-let IntermediateExcFromParts (e: string) (line: int) = e |> GenExc |> IntermediateExc line |> Error
-let IntermediateExcFPPure (e: string) (line: int) = e |> GenExc |> IntermediateExc line
+let IntermediateExcWithoutLine (e: GenericException) = { genExc = e; line = None}
+let IntermediateExcMaybeLine maybeLine (e: GenericException) = { genExc = e; line = maybeLine }
+let IntermediateExcFromParts (e: string) (line: int) = e |> GenExc |> IntermediateExc line
+let IntermediateExcFPPure (e: string) (line: int option) = e |> GenExc |> IntermediateExcMaybeLine line
 
 let toIntermediateResult (line: int) (result: GenericResult<'a>) : IntermediateClacResult<'a> =
     result |> mapError (fun e -> IntermediateExc line e)
 
-let toIntermediateExcWithoutLine (result: GenericResult<'a>) : IntermediateClacResult<'a> = 
-    result |> mapError (fun e -> { genExc = e; line = None })
+let toIntermediateResultWithoutLine (result: GenericResult<'a>) : IntermediateClacResult<'a> = 
+    result |> mapError IntermediateExcWithoutLine
 
-let tupledToIntermediateGenExc (result: int * GenericResult<'a>) : IntermediateClacResult<'a> = 
+let tupledToIntermediateResult (result: int * GenericResult<'a>) : IntermediateClacResult<'a> = 
     let (line, err) = result
     toIntermediateResult line err
 
@@ -86,16 +86,19 @@ let tupledToFullExc (result: string option * IntermediateClacResult<'a>) : FullC
     let (location, err) = result
     toFullResult location err
 
-let printFullExc (e: FullGenericException) =
-    let lineSubStr = if e.genExcWithLine.line.IsSome then sprintf "at line %d" (e.genExcWithLine.line.Value+1) else ""
-    let fileSubStr = if e.fileLocation.IsSome then sprintf "in %s" e.fileLocation.Value else "in interactive"
+let printFullExc callDir (e: FullGenericException) =
+    let relFilePath path = System.IO.Path.GetRelativePath (callDir,path)
+    let lineSubStr = if e.genExcWithLine.line.IsSome then sprintf " at line %d" (e.genExcWithLine.line.Value+1) else ""
+    let fileSubStr = " in " + fileLocOptionToString (e.fileLocation |> Option.map relFilePath)
     let fileLink = 
         match (e.fileLocation, e.genExcWithLine.line) with
         | Some fileLoc, Some lineLoc -> sprintf "%s:%d" fileLoc (lineLoc+1)
         | Some fileLoc, None -> fileLoc
         | _ -> ""
-    printfn "Error occured %s %s: %s" fileSubStr lineSubStr fileLink
+    printfn "Error occured%s%s: %s" fileSubStr lineSubStr fileLink
     printfn "%s" e.genExcWithLine.genExc.message
+
+let fileLocOptionToString maybeFileLoc = maybeFileLoc |> Option.defaultValue ("interactive")
 
 // Utilities
 
@@ -110,3 +113,12 @@ let combineClacResultsToArray (results: GenericResult<'a> seq) : GenericResult<'
             | Error e -> Error e
         | Error e -> Error e
     ) (Ok [| |])
+
+let printProgram (program: Program) =
+    printfn "%s" "---"
+    printfn "%s" "Program"
+    printfn "Main file: %A" program.mainFile
+    printfn "Secondary files: "
+    for file in program.secondaryFiles do
+        printfn "- %A" file
+    printfn "---"

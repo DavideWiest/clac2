@@ -1,3 +1,0 @@
-let id x : int int = x
-
-let add3 x : int int = add x 3

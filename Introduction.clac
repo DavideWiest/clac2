@@ -13,5 +13,5 @@ let a : int = 3
 let add2 num : int int = add 2 num
 
 -- open a module
-open std
+open clac2/Std/Numeric
 

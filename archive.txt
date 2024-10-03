@@ -1,3 +1,5 @@
+interpreter: 
+
 let buildArgs evalCtx (argsBefore: DefinedValue array) (signature: FnType array) : FullClacResult<DefinedValue array> =
         if argsBefore.Length = signature.Length - 1 then argsBefore |> Ok else
         
@@ -36,3 +38,35 @@ middle end: entry Fn
             |> Array.append file.assignments
             |> Array.map (fun x -> x.name, x) 
             |> Map.ofArray
+
+middle end: checkManipulation match m[0] with Fn ...
+
+            let innerManipCorrect = checkManipulation typeCheckingCtx m' line
+            if innerManipCorrect.IsSome then innerManipCorrect else
+            if m.Length = 1 then None else
+            
+            // match signature
+            match ReferenceToFnType typeCheckingCtx line m'[0] with
+            | Error e -> Some (e)
+            | Ok(Function fs) -> 
+                let remainingSignature = fs[..fs.Length-2]
+
+                if remainingSignature.Length <> m.Length - 1 then Some (IntermediateExcFPPure ("Invalid number of arguments for: " + (manipulationToString m')) line) else
+                
+                typesMatch remainingSignature m[1..] f line |> Option.map (IntermediateExc line)
+            | Ok(BaseFnType t) -> Some (IntermediateExcFPPure ("Function " + (manipulationToString m') + " received too many arguments.") line)
+
+middle end:
+
+    let ReferenceToFnType (typeCheckingCtx: TypeCheckingCtx) line (x: Reference) : IntermediateClacResult<FnType> =
+        // variables are treated as functions in the reference type, but not in the fntype type
+        let returnSig (s: Signature) = if s.Length = 1 then Ok s[0] else Ok (Function s)
+
+        match x with
+        | Fn f -> 
+            if isPrimitive f then Ok (getValidatedPrimitiveType f) else
+            returnSig typeCheckingCtx.signatures[f]
+        | Manipulation m ->
+            match checkManipulation typeCheckingCtx m line with
+            | Some e -> Error e
+            | None -> ReferenceToFnType typeCheckingCtx line m[0]

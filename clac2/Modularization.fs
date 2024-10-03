@@ -18,8 +18,8 @@ module FileLoading =
         | Interactive s -> loadAllFilesInner stdCtx None s
         | File f -> f |> tryReadFileIntermedExc |> toFullResult (Some f) |> bind (loadAllFilesInner stdCtx (Some f))
 
-    let loadAllFilesInner stdCtx (mainFileLoc: string option) (mailFileLines: string) : FullClacResult<Program * depMap> =
-        mailFileLines 
+    let loadAllFilesInner stdCtx (mainFileLoc: string option) (mainFileLines: string) : FullClacResult<Program * depMap> =
+        mainFileLines 
         |> preparse
         |> toFullResult mainFileLoc
         |> bind (fun lines -> 

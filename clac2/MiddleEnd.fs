@@ -3,13 +3,21 @@ module rec Clac2.MiddleEnd
 open Clac2.Domain
 open Clac2.Utilities
 open Clac2.DomainUtilities
-
+open Clac2.Language
 
 module TypeChecking =
     type TypeCheckingCtx = {
         types: Map<string, TypeDefinition>
         signatures: Map<string, Signature>
     }
+
+    type ExpectedInputSignature =
+        | AnyIn
+        | ExpectedSignature of FnType array
+
+    type ExcpectedOutputType =
+        | AnyOut
+        | ExpectedType of FnType
 
     let validateTypes (stdCtx: StandardContext) (program: Program) (file: OrderedFile) : IntermediateClacResult<OrderedFile> =
         match validateTypesInner stdCtx program file with
@@ -47,7 +55,7 @@ module TypeChecking =
         }
 
         checkTypeDefinitions stdCtx file.typeDefinitions typeMap 
-        |> Option.orElse (checkManipulations typeCheckingCtx file.expressions)
+        |> Option.orElse (checkManipulationsAnyOutputType typeCheckingCtx file.expressions)
         |> Option.orElse (checkAssignments typeCheckingCtx file.assignments) 
 
     // not necessary to check all types, only custom ones (will run for each file)
@@ -69,43 +77,18 @@ module TypeChecking =
                 if Array.contains x stdCtx.defCtx.types then None else
 
                 let line = getLineType customTypeMap x
-                if List.contains x typesHigherUp' then Some(IntermediateExcFPPure ("Recursive type definition: " + x) line) else 
-                if Map.containsKey x customTypeMap |> not then Some(IntermediateExcFPPure ("Unknown type: " + x) line) else
+                if List.contains x typesHigherUp' then Some(IntermediateExcFPPureMaybeLine ("Recursive type definition: " + x) line) else 
+                if Map.containsKey x customTypeMap |> not then Some(IntermediateExcFPPureMaybeLine ("Unknown type: " + x) line) else
 
                 checkTypeDefsInner customTypeMap typesHigherUp' customTypeMap[x]
             )
         
         Array.tryPick (checkTypeDefsInner typeMap []) customTypes
 
-    let checkManipulations typeCheckingCtx manipulations : IntermediateException option =
+    let checkManipulationsAnyOutputType typeCheckingCtx manipulations : IntermediateException option =
         manipulations
         |> Array.map (fun x -> x.loc.lineLocation, x.manipulation)
-        |> Array.tryPick (fun (i, x) -> checkManipulation typeCheckingCtx x i)
-
-    let rec checkManipulation typeCheckingCtx (m: Reference array) line = 
-        let typesMatch inputSignature args f =
-            args
-            |> Array.zip inputSignature
-            |> Array.tryPick (fun (x, y) -> 
-                if x = y then None else Some (GenExc (sprintf "Argument type mismatch: Expected %A, but got %A for function %s." x y f) )
-            )
-            
-        match m[0] with
-        | Fn f ->
-            if isPrimitive f then None else
-
-            if not (typeCheckingCtx.signatures.ContainsKey f) then Some (IntermediateExcWithoutLine (GenExc ("Internal Error: customFnsMap does not contain function " + f))) else
-
-            let line = getAssignmentLine typeCheckingCtx.types f |> Option.orElse (getLineType typeCheckingCtx.types f)
-
-            let signature = typeCheckingCtx.signatures[f]
-            let inputSignature= signature[..signature.Length-2]
-            if inputSignature.Length <> m.Length - 1 then Some (IntermediateExcFPPure ("Invalid number of arguments: " + f) line) else
-
-            let args = m[1..inputSignature.Length]
-            let typesOfArgs = args |> Array.map (ReferenceToFnType typeCheckingCtx.signatures)
-
-            typesMatch inputSignature typesOfArgs f |> Option.map (IntermediateExcMaybeLine line)
+        |> Array.tryPick (fun (i, x) -> checkManipulation typeCheckingCtx x i AnyIn AnyOut)
 
     let checkAssignments typeCheckingCtx customAssignments : IntermediateException option =
         let checkAssignment (assignment: CallableFunction) =
@@ -116,20 +99,63 @@ module TypeChecking =
                 )
                 |> Map.ofArray
 
-            let newfnSignatureMap = Map.merge argumentsAsAssignments typeCheckingCtx.signatures
-            let newTypeCheckingCtx = { typeCheckingCtx with signatures = newfnSignatureMap }
-            checkManipulation newTypeCheckingCtx assignment.fn assignment.loc.lineLocation
+            let newTypeCheckingCtx = { typeCheckingCtx with signatures = Map.merge argumentsAsAssignments typeCheckingCtx.signatures }
+            let expectedInputSignature = ExpectedSignature assignment.signature[..assignment.signature.Length-2]
+            let expectedOutputType = ExpectedType assignment.signature[assignment.signature.Length-1]
+            checkManipulation newTypeCheckingCtx assignment.fn assignment.loc.lineLocation expectedInputSignature expectedOutputType
 
         Array.tryPick checkAssignment customAssignments
 
-let ReferenceToFnType (functionSignatureMap: Map<string,FnType array>) (x: Reference) =
-    match x with
-    | Fn f -> 
-        if isPrimitive f then getPrimitiveType f else
+    let rec checkManipulation typeCheckingCtx (m: Reference array) line (expectedInputSignature: ExpectedInputSignature) (expectedOutputType: ExcpectedOutputType) = 
+        let rec typesMatch (inputSignature: FnType array) args f : IntermediateException option =
+            Array.fold (fun acc (signaturePart: FnType, arg) -> 
+                acc
+                |> Option.orElse (
+                    match arg with
+                    | Fn f' ->
+                        let signature = getInputSignature typeCheckingCtx f'
+                        if signature.Length = 1 && signature[0] = signaturePart then None else Some (IntermediateExcFPPure (sprintf "Argument type mismatch: Expected %A, but got %A for function %s." signaturePart signature f) line) 
+                    | Manipulation m' ->
+                        match signaturePart with
+                        | BaseFnType s ->
+                            // constants/variables are treated as functions with no arguments
+                            if m'.Length <> 1 then Some (IntermediateExcFPPure ("Expected constant (function without arguments), but received function.") line) else
+                            if m'[0] <> Fn s then Some (IntermediateExcFPPure (sprintf "Expected constant of type %s, but received %A." s m'[0]) line) else None
+                        | Function fs -> 
+                            checkManipulation typeCheckingCtx m' line AnyIn (ExpectedType signaturePart) 
+                            |> Option.orElse(typesMatch fs m' f)
+                )
+            ) None (Array.zip inputSignature args)
 
-        let s = functionSignatureMap[f]
-        // variables are treated as functions within FnType, but can not be within the Reference type
-        if s.Length = 1 then s[0] else Function s
+        match m[0] with
+        | Fn f ->
+            if isPrimitive f then
+                if m.Length <> 1 then Some (IntermediateExcFPPure ("Primitive " + f + " used as function.") line) else None
+            else
 
-let getAssignmentLine customFnsMap f : int option = if customFnsMap.ContainsKey f then Some customFnsMap[f].loc.lineLocation else None
+            if not (typeCheckingCtx.signatures.ContainsKey f) then Some (IntermediateExcWithoutLine (GenExc ("Internal Error: customFnsMap does not contain function " + f))) else
+
+            let inputSignature, outputSignature = getSignatureInOutSeparate typeCheckingCtx f
+            // implement argument propagation here and below the if statement
+            if inputSignature.Length <> m.Length - 1 then Some (IntermediateExcFPPure (sprintf "Invalid number of arguments for %s: Expected %i, received %i" f inputSignature.Length (m.Length - 1)) line) else
+            
+            if expectedInputSignature <> AnyIn && expectedInputSignature <> ExpectedSignature inputSignature then Some (IntermediateExcFPPure (sprintf "Expected input signature for %s is %A, but received %A" f inputSignature expectedInputSignature) line) else
+            if expectedOutputType <> AnyOut && expectedOutputType <> ExpectedType outputSignature then Some (IntermediateExcFPPure (sprintf "Expected output type for %s is %A, but received %A" f outputSignature expectedOutputType) line) else
+        
+            typesMatch inputSignature m[1..] f
+        | Manipulation m' -> 
+            // the first manipulation is a curried function, so we can append the first args to the rest
+            let newManip = Array.concat [ m' ; m.[1..] ]
+            checkManipulation typeCheckingCtx newManip line expectedInputSignature expectedOutputType
+
+    let getInputSignature (typeCheckingCtx: TypeCheckingCtx) f : FnType array = 
+        getSignatureInOutSeparate typeCheckingCtx f |> fst
+
+    let getSignatureInOutSeparate (typeCheckingCtx: TypeCheckingCtx) f : FnType array * FnType = 
+        let signature = getSignature typeCheckingCtx f
+        signature[..signature.Length-2], signature[signature.Length-1]
+
+    let getSignature (typeCheckingCtx: TypeCheckingCtx) f : Signature = 
+        typeCheckingCtx.signatures[f]
+
 let getLineType customTypes f : int option = if customTypes.ContainsKey f then Some customTypes[f].loc.lineLocation else None

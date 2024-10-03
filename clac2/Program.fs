@@ -10,7 +10,7 @@ open Clac2.Language
 
 [<EntryPoint>]
 let main args =
-    let baseFuncsCombined = Array.concat [BuildIn.baseFuncs; BuildIn.baseVars]
+    let baseFuncsCombined = Array.concat [BuildIn.arithmeticFuncs; BuildIn.baseVars]
     let stdCtx = StandardContext.buildStandardContext baseFuncsCombined Types.baseTypes 
 
     args

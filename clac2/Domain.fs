@@ -25,15 +25,14 @@ type MainFile = {
 
 // wrapper, for frontend and utils
 type Line =
+    | ModuleReference of string 
+    | ModuleDeclaration of string 
     | Expression of FreeManipulation // will be sent to stdout
     | Assignment of CallableFunction
     | TypeDefinition of TypeDefinition
-    // for later
-    | ModuleReference of string 
-    | ModuleDeclaration of string 
 
 type OrderedFile = {
-    moduleDeclaration: string option
+    // moduleDeclaration: string option
     moduleReferences: string array 
     expressions: FreeManipulation array
     assignments: CallableFunction array
@@ -66,9 +65,7 @@ type Manipulation = Reference array // array of the functions
 
 type Reference =
     | Fn of string
-    // for later 
-    // is this of any use?
-    // | Manipulation of Manipulation
+    | Manipulation of Manipulation
 
 type TypeDefinition = {
     name: string
@@ -87,6 +84,12 @@ type Primitive =
     // for later
     // | PrimitiveFloat of float
     // | Bool
+
+type NestedItems<'a> =
+    | NestedItem of 'a
+    | NestedArray of NestedItems<'a> array
+
+type NestedItemsArray<'a> = NestedItems<'a> array
 
 // Defined
 

@@ -1,5 +1,6 @@
 module rec Clac2.DomainUtilities 
 
+open System
 open Clac2.Domain
 open FSharp.Core.Result
 
@@ -56,7 +57,8 @@ let IntermediateExc (line: int) (e: GenericException) = { genExc = e; line = Som
 let IntermediateExcWithoutLine (e: GenericException) = { genExc = e; line = None}
 let IntermediateExcMaybeLine maybeLine (e: GenericException) = { genExc = e; line = maybeLine }
 let IntermediateExcFromParts (e: string) (line: int) = e |> GenExc |> IntermediateExc line
-let IntermediateExcFPPure (e: string) (line: int option) = e |> GenExc |> IntermediateExcMaybeLine line
+let IntermediateExcFPPure (e: string) (line: int) = e |> GenExc |> IntermediateExc line
+let IntermediateExcFPPureMaybeLine (e: string) maybeLine = e |> GenExc |> IntermediateExcMaybeLine maybeLine
 
 let toIntermediateResult (line: int) (result: GenericResult<'a>) : IntermediateClacResult<'a> =
     result |> mapError (fun e -> IntermediateExc line e)
@@ -122,3 +124,75 @@ let printProgram (program: Program) =
     for file in program.secondaryFiles do
         printfn "- %A" file
     printfn "---"
+
+let rec manipulationToString (m: Manipulation) =
+    m 
+    |> Array.map (fun x -> 
+        match x with
+        | Fn f -> f
+        | Manipulation m' -> "(" + manipulationToString m' + ")"
+    ) 
+    |> String.concat " "
+
+// type and primitive functions
+
+let definedValueToInt (x: DefinedValue) = definedValueToIntInner x 0
+
+let rec definedValueToIntInner (x: DefinedValue) (recursionCount: int) =
+    // prevent infinite recursion while allowing users to pass nested functions
+    if recursionCount > 10 then Error (sprintf "Recursion limit reached while trying to convert argument to int for: %A" x) else
+
+    match x with
+        | DefinedPrimitive (PrimitiveInt i) -> Ok i
+        | DefinedFn (name, fn) ->
+            match fn [| |] with
+            | Ok(v) -> definedValueToIntInner v (recursionCount + 1)
+            | Error e -> Error e
+
+let readPrimitive (p: string) =
+    // ints
+    if Seq.forall Char.IsDigit p then p |> int |> PrimitiveInt else
+
+    failwith ("Unable to parse primitive: " + p)
+
+let isPrimitive (s: string) = 
+    // ints
+    Seq.forall Char.IsDigit s
+
+let getValidatedPrimitiveType primitiveStr =
+    match readPrimitive primitiveStr with
+        | PrimitiveInt p -> BaseFnType "int"
+
+// string
+
+let getInput (args: string array) =
+    if args.Length = 0 then
+        printf "Enter the program:\n"
+        Interactive (Console.ReadLine())
+    else
+        File args[0]
+
+// misc base
+
+let resultToReturnCode x =
+    match x with 
+    | Ok _ -> 0 
+    | Error _ -> 1
+
+let lineToString (line: Line) =
+    let exprToString m = m |> Array.map string |> String.concat " "
+
+    match line with
+    | Expression m -> exprToString m.manipulation
+    | Assignment f -> 
+        let args = (f.args |> String.concat " ")
+        let signature = (f.signature |> Array.map (fun x -> x.ToString()) |> String.concat " ")
+        let fnBody = exprToString f.fn
+
+        sprintf "let %s %s : %s = %s" f.name args signature fnBody
+    | TypeDefinition t -> 
+        let signature = (t.signature |> Array.map (fun x -> x.ToString()) |> String.concat " ")
+
+        sprintf "type %s : %s" t.name signature
+    | ModuleReference m -> sprintf "open %s" m
+    | ModuleDeclaration m -> sprintf "module %s" m

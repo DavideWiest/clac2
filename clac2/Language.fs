@@ -2,14 +2,16 @@ module rec Clac2.Language
 
 open Clac2.Domain
 open Clac2.Utilities
+open Clac2.DomainUtilities
 open FSharp.Core.Result
 
 module Syntax =
     let commentIdentifer = "--"
+    let nameUnallowedChars = " \t\n\r;:()[]{}" // this language is flexible - hence negative validation
 
     let nameIsInvalid (name: string) =
         name 
-        |> Seq.exists (fun x -> Seq.contains x " \t\n\r;:()[]{}")
+        |> Seq.exists (fun x -> Seq.contains x nameUnallowedChars)
         || isPrimitive name
 
 module Types =
@@ -46,12 +48,13 @@ module BuildIn =
 
     let basicArithmeticArgsAndSignature = [| ("n1", Types.intType); ("n2", Types.intType) |]
 
-    let baseFuncs = 
+    let arithmeticFuncs = 
         [|
             ("add", (+))
             ("subtract", (-))
             ("mul", (*))
             ("div", (/))
+            ("pow", (fun x y -> int (float x ** float y)))
         |]
         |> Array.map (fun (k, f) -> k, fun input -> Array.reduce f input)
         |> Array.map (fun (k, f) -> k, fun input -> Conversion.fnTypeToIntAdapter f input 2)

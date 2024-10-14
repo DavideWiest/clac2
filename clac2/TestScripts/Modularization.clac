@@ -4,3 +4,5 @@ open Base
 
 -- imported function and constant
 square y
+cube y
+-- factorial 5

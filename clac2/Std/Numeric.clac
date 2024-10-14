@@ -1,4 +1,8 @@
 
 
 let square x : int*2 = mul x x
--- let cube x : int*2 = 
+let cube x : int*2 = mul x (mul x x) 
+-- mul x mul x x
+
+
+-- let factorial n : int int = ifelse (= n 1) (mul n (factorial (subtract n 1))) 1

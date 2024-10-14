@@ -34,6 +34,6 @@ type basicArithmetic2 : int2 int2 int2
 -- let id x : int int = x
 
 -- passing of arguments
-let applyFive f : (int int) = f 5
+let applyFive f : (int int) int = f 5
 let add2 b : int int = add 2 b
 applyFive add2

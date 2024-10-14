@@ -33,8 +33,9 @@ let parseFull fileLoc (stdCtx: StandardContext) (input: string) : FullClacResult
 
 let preparse (input: string) : IntermediateClacResult<(int * UnparsedLine) array> =
     input
-    |> Parsing.trimSplit [| '\n' |]
+    |> Parsing.trimSplitSimple [| '\n' |]
     |> Array.mapi (fun i x -> (i, x))
+    |> Array.map (fun (i, x) -> i, upToIfContaints x Language.Syntax.commentIdentifer)
     |> Parsing.trimSplitIndexedArray [| ';' |]
     |> Array.filter (fun x -> (snd x) <> "")
     |> Array.filter (fun x -> not ((snd x).StartsWith Syntax.commentIdentifer))
@@ -92,7 +93,7 @@ let ToUnparsedLineInner (line: string) : GenericResult<UnparsedLine> =
         line |> ToUnparsedManipulation |> map UnparsedExpression
 
 let ToUnparsedCallableFunction (line: string) : GenericResult<UnparsedCallableFunction> =
-    let parts = line |> Parsing.trimSplit [| ' ' |]
+    let parts: string array = line |> Parsing.trimSplit [| ' ' |]
     if parts.Length < 6 then GenExcError "Assignment missing parts. Missing space?" else
 
     let firstColonI = parts |> Array.findIndex (fun x -> x = ":")
@@ -108,10 +109,9 @@ let ToUnparsedCallableFunction (line: string) : GenericResult<UnparsedCallableFu
     if Syntax.nameIsInvalid name then GenExcError ("Invalid function name: " + name) else
 
     extractFullSignature parts[firstColonI+1..firstEqualI-1]
-    |> bind (fun (signatureParts: NestedItemsArray<string>) ->
-        if (signatureParts.Length) - 1 <> (args |> Array.length) then GenExcError "Function signature does not match number of arguments." else
+    |> bind (fun (signatureParts: NestedItemsArray<string>) ->        
+        if (signatureParts.Length) - 1 <> (args |> Array.length) then GenExcError (sprintf "Expected %i arguments, got %i. Signature: %A" (signatureParts.Length - 1) (args |> Array.length) signatureParts ) else
         if args |> Array.map Syntax.nameIsInvalid |> Array.exists id then GenExcError "Invalid argument name." else
-        // checking if the types are valid names is not necessary - they are references to defined types, which are checked (elsewhere)
 
         parts[firstEqualI+1..] |> String.concat " " |> ToUnparsedManipulation
         |> map (fun fnBody ->
@@ -131,6 +131,7 @@ let extractFullSignature rawSignature: GenericResult<NestedItemsArray<string>> =
             let typeRefSplit = typeRef.Split '*'
 
             if typeRefSplit.Length <> 2 then GenExcError ("Invalid type reference (asterisk found more than once): " + typeRef) else
+            // checking if the type is a valid name is not necessary - they are references to defined types, which are checked (elsewhere)
 
             Array.init (int typeRefSplit[1]) (fun _ -> typeRefSplit[0]) |> Ok
 
@@ -250,15 +251,20 @@ module Parsing =
             [| x |]
         )
 
+    let trimSplitSimple (cs: char array) (s: string) =
+        s.Split cs
+        |> Array.map (fun x -> x.Trim())
+
     let trimSplitIndexedArray (cs: char array) (arr: (int * string) array) =
         arr
-        |> Array.map (fun (i, x) -> trimSplit cs x |> Array.map (fun y -> i, y))
-        |> Array.concat
+        |> Array.collect (fun (i, x) -> trimSplitSimple cs x |> Array.map (fun y -> i, y))
 
     let parseNestedByBrackets (s: string) : GenericResult<NestedItemsArray<string>> = 
         let rec parseNestedByBracketsInner (acc: NestedItemsArray<string>) (splitS: string array) =
-            if splitS.Length = 0 || splitS[0] = ")" then 
+            if splitS.Length = 0 then 
                 acc, splitS
+            else if splitS[0] = ")"  then 
+                acc, splitS[1..] // dont pass on the closing bracket
             else if splitS[0] = "(" then 
                 let (innerAcc, rest) = parseNestedByBracketsInner [||] splitS[1..]
                 parseNestedByBracketsInner (Array.append acc [|NestedArray innerAcc|]) rest
@@ -269,7 +275,7 @@ module Parsing =
         if maybeParanError.IsSome then Error maybeParanError.Value else
 
         s 
-        |> Parsing.trimSplit [| ' ' |]
+        |> trimSplit [| ' ' |]
         |> parseNestedByBracketsInner [||]
         |> fst
         |> Ok
@@ -280,7 +286,7 @@ module Parsing =
         s
         |> Seq.fold (fun (maybeExc: GenericException option) c ->
             if maybeExc.IsSome then maybeExc else
-            if stack.Count = 0 && c = '(' then Some(GenExc (sprintf "Too many closing parantheses: %c" c)) 
+            if stack.Count = 0 && c = ')' then Some(GenExc (sprintf "Too many closing parantheses: %c" c)) 
             else
 
                 if c = '(' then stack.Push c

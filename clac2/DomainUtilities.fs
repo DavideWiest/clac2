@@ -4,38 +4,6 @@ open System
 open Clac2.Domain
 open FSharp.Core.Result
 
-type EvalCtx = {
-    customAssignmentMap: Map<string, CallableFunction>
-    stdFunctionsMap: Map<string, DefinedCallableFunction>
-    currentLoc: ProgramLocation
-}
-
-module EvalCtx =
-    let init stdCtx program loc  =        
-        let file = program.mainFile
-        let allFiles = 
-            program.secondaryFiles
-            |> Array.map (fun x -> x.content) |> Array.append [| file.content |]
-
-        {
-            customAssignmentMap = 
-                allFiles
-                |> Array.map (fun x -> x.assignments)
-                |> Array.map (Array.map (fun x -> x.name, x))
-                |> Array.concat
-                |> Map.ofArray
-            stdFunctionsMap = 
-                stdCtx.definedCtx.functions 
-                |> Array.map (fun x -> x.name, x) 
-                |> Map.ofArray
-            currentLoc = loc
-        }
-
-let getSignature evalCtx f =
-    if evalCtx.stdFunctionsMap.ContainsKey f then evalCtx.stdFunctionsMap[f].signature |> Ok else 
-    if evalCtx.customAssignmentMap.ContainsKey f then evalCtx.customAssignmentMap[f].signature |> Ok
-    else Error (GenExc ("Function not found (at evaluation): " + f))
-
 let buildLoc fileLoc lineLoc = { fileLocation = fileLoc; lineLocation = lineLoc }
 
 // Exceptions
@@ -78,11 +46,6 @@ let FullExcFromParts (e: string) (line: int) (location: string option) = e |> Ge
 
 let toFullResult (location: string option) (result: IntermediateClacResult<'a>) : FullClacResult<'a> =
     result |> mapError (fun e -> FullExc location e)
-
-let toFullExcFromEvalCtx (evalCtx: EvalCtx) (result: GenericResult<'a>) : FullClacResult<'a> =
-    result |> toIntermediateResult evalCtx.currentLoc.lineLocation |> toFullResult evalCtx.currentLoc.fileLocation
-
-let FullExcFromEvalCtx (e: string) (evalCtx: EvalCtx) = e |> GenExc |> IntermediateExc (evalCtx.currentLoc.lineLocation) |> FullExc evalCtx.currentLoc.fileLocation |> Error
 
 let tupledToFullExc (result: string option * IntermediateClacResult<'a>) : FullClacResult<'a> = 
     let (location, err) = result

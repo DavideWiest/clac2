@@ -6,10 +6,6 @@ open Clac2.Language
 open FSharp.Core.Result
 open Clac2.DomainUtilities
 
-type EvalStartFn = 
-    | StartReference of Reference
-    | DefinedStartFn of string * DefinedFn
-
 let evaluateFile (stdCtx: StandardContext) (program: Program) : FullClacResult<DefinedValue> array =
     let dummyLoc = { fileLocation = None; lineLocation = 0 }
     // stdCtx must not be used after following line - its data is incomplete compared to the program and evalCtx
@@ -48,9 +44,11 @@ let rec substituteOne evalCtx (substitutions: Map<string, DefinedValue>) x : Ful
         if evalCtx.customAssignmentMap.ContainsKey f then evaluateOne evalCtx evalCtx.customAssignmentMap[f].loc evalCtx.customAssignmentMap[f].fn Map.empty else
         if evalCtx.stdFunctionsMap.ContainsKey f then toDefinedFn evalCtx f |> Ok else
         
-        FullExcFromEvalCtx ("Function not found (at evaluation during substitution): " + f) evalCtx
+        EvalCtx.FullExcFromEvalCtx ("Function not found (at evaluation during substitution): " + f) evalCtx
     // calls eval over evaluateOne with substitutions
     | Manipulation m -> evaluateOne evalCtx evalCtx.currentLoc m substitutions
+
+type EvalStartFn = StartReference of Reference | DefinedStartFn of string * DefinedFn
 
 let rec eval evalCtx (startFn: EvalStartFn) (args: DefinedValue array) : FullClacResult<DefinedValue> =
     match startFn with
@@ -58,10 +56,10 @@ let rec eval evalCtx (startFn: EvalStartFn) (args: DefinedValue array) : FullCla
         printfn "--- eval %s with %A ---" f args
 
         if isPrimitive f then 
-            if args.Length = 0 then f |> readPrimitive |> DefinedPrimitive |> Ok else FullExcFromEvalCtx ("Primitive " + f + " used as function (at interpreter).") evalCtx
+            if args.Length = 0 then f |> readPrimitive |> DefinedPrimitive |> Ok else EvalCtx.FullExcFromEvalCtx ("Primitive " + f + " used as function (at interpreter).") evalCtx
         else
-            if evalCtx.stdFunctionsMap.ContainsKey f then evalCtx.stdFunctionsMap[f].DefinedFn args |> toGenericResult |> toFullExcFromEvalCtx evalCtx else
-            if evalCtx.customAssignmentMap.ContainsKey f |> not then FullExcFromEvalCtx ("Function " + f + " not found (at interpreter)") evalCtx else
+            if evalCtx.stdFunctionsMap.ContainsKey f then evalCtx.stdFunctionsMap[f].DefinedFn args |> toGenericResult |> EvalCtx.toFullExcFromEvalCtx evalCtx else
+            if evalCtx.customAssignmentMap.ContainsKey f |> not then EvalCtx.FullExcFromEvalCtx ("Function " + f + " not found (at interpreter)") evalCtx else
 
             let fn = evalCtx.customAssignmentMap[f]
             let substitutions = args |> Array.zip fn.args |> Map.ofArray
@@ -76,8 +74,45 @@ let rec eval evalCtx (startFn: EvalStartFn) (args: DefinedValue array) : FullCla
             | DefinedFn (name, fn) -> 
                 let newStartFn = DefinedStartFn (name, fn)
                 eval evalCtx newStartFn args
-            | DefinedPrimitive p -> FullExcFromEvalCtx ("Primitive " + p.ToString() + " used as function.") evalCtx
+            | DefinedPrimitive p -> EvalCtx.FullExcFromEvalCtx ("Primitive " + p.ToString() + " used as function.") evalCtx
         ) 
-    | DefinedStartFn (name, fn) -> fn args |> toGenericResult |> toFullExcFromEvalCtx evalCtx
+    | DefinedStartFn (name, fn) -> fn args |> toGenericResult |> EvalCtx.toFullExcFromEvalCtx evalCtx
  
 let toDefinedFn evalCtx f = DefinedFn (evalCtx.stdFunctionsMap[f].name, evalCtx.stdFunctionsMap[f].DefinedFn)
+
+type EvalCtx = {
+    customAssignmentMap: Map<string, CallableFunction>
+    stdFunctionsMap: Map<string, DefinedCallableFunction>
+    currentLoc: ProgramLocation
+}
+
+module EvalCtx =
+    let init stdCtx program loc  =        
+        let file = program.mainFile
+        let allFiles = 
+            program.secondaryFiles
+            |> Array.map (fun x -> x.content) |> Array.append [| file.content |]
+
+        {
+            customAssignmentMap = 
+                allFiles
+                |> Array.map (fun x -> x.assignments)
+                |> Array.map (Array.map (fun x -> x.name, x))
+                |> Array.concat
+                |> Map.ofArray
+            stdFunctionsMap = 
+                stdCtx.definedCtx.functions 
+                |> Array.map (fun x -> x.name, x) 
+                |> Map.ofArray
+            currentLoc = loc
+        }
+
+    let getSignature evalCtx f =
+        if evalCtx.stdFunctionsMap.ContainsKey f then evalCtx.stdFunctionsMap[f].signature |> Ok else 
+        if evalCtx.customAssignmentMap.ContainsKey f then evalCtx.customAssignmentMap[f].signature |> Ok
+        else Error (GenExc ("Function not found (at evaluation): " + f))
+
+    let toFullExcFromEvalCtx (evalCtx: EvalCtx) result: FullClacResult<'a> =
+        result |> toIntermediateResult evalCtx.currentLoc.lineLocation |> toFullResult evalCtx.currentLoc.fileLocation
+
+    let FullExcFromEvalCtx (e: string) (evalCtx: EvalCtx) = e |> GenExc |> IntermediateExc (evalCtx.currentLoc.lineLocation) |> FullExc evalCtx.currentLoc.fileLocation |> Error

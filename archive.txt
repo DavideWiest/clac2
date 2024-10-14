@@ -70,3 +70,37 @@ middle end:
             match checkManipulation typeCheckingCtx m line with
             | Some e -> Error e
             | None -> ReferenceToFnType typeCheckingCtx line m[0]
+
+middle end old typesmatch:
+
+        let rec typesMatch (inputSignature: FnType array) args f : IntermediateException option =
+            Array.fold (fun acc (signaturePart: FnType, arg) -> 
+                acc
+                |> Option.orElse (
+                    match arg with
+                    | Fn f' ->
+                        if isPrimitive f' then 
+                            // check is primitive type matches signaturepart
+                        else
+                        let argSignature = Signature.retrieve typeCheckingCtx f'
+                        if Signature.signaturesMatch signaturePart (Function argSignature) then None else Some (IntermediateExcFPPure (sprintf "Argument type mismatch: Expected %A, received %A for function %s." signaturePart argSignature f) line) 
+                    // fix this: it leads to infinite recursion
+                    | Manipulation m' -> 
+                    
+                        if m'.Length = 1 
+                        then if m'.[0] =  then None else Some (IntermediateExcFPPure (sprintf "Argument type mismatch: Expected %A, received %A." signaturePart m'.[0]) line)
+                        else checkManipulation typeCheckingCtx m' line (ExpectedType signaturePart)
+                        //match signaturePart with
+                        //| BaseFnType s ->
+                        //    // fix this 
+                        //    // factorial (subtract (n 1)) does not work
+                        //    // mabe a recursive call?
+                        //    // constants/variables are treated as functions with no arguments
+                        //    if m'.Length <> 1 then Some (IntermediateExcFPPure ("Expected constant (function without arguments), but received function.") line) else
+                        //    if m'[0] <> Fn s then Some (IntermediateExcFPPure (sprintf "Expected constant of type %s, received %A." s m'[0]) line) else 
+                        //    None
+                        //| Function fs -> 
+                        //    checkManipulation typeCheckingCtx m' line (ExpectedType signaturePart) 
+                        //    |> Option.orElse(typesMatch fs m' f)
+                )
+            ) None (Array.zip inputSignature args)

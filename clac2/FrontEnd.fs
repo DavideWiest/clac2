@@ -36,9 +36,9 @@ let preparse (input: string) : IntermediateClacResult<(int * UnparsedLine) array
     |> Parsing.trimSplitSimple [| '\n' |]
     |> Array.mapi (fun i x -> (i, x))
     |> Array.map (fun (i, x) -> i, upToIfContaints x Language.Syntax.commentIdentifer)
+    |> Array.filter (fun x -> not ((snd x).StartsWith Syntax.commentIdentifer))
     |> Parsing.trimSplitIndexedArray [| ';' |]
     |> Array.filter (fun x -> (snd x) <> "")
-    |> Array.filter (fun x -> not ((snd x).StartsWith Syntax.commentIdentifer))
     |> Array.map (applyUnpacked ToUnparsedLine)
     |> combineResultsToArray
 

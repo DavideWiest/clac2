@@ -99,17 +99,27 @@ module TypeChecking =
             if not (typeCheckingCtx.signatures.ContainsKey f) then Some (IntermediateExcWithoutLine (GenExc ("Internal Error: customFnsMap does not contain function " + f + ". It probably was not registered in the front end."))) else
 
             let signature = typeCheckingCtx.signatures[f]
-            if m.Length - 1 > signature.Length - 1 then Some (IntermediateExcFPPure (sprintf "Invalid number of arguments for %s: Expected %i, received %i" f (signature.Length - 1) (m.Length - 1)) line) else
-            
-            let inputSignature, outputSignature = signature[..m.Length-2], signature[m.Length-1..]
+            let containsArgumentPropagation = m.Length - 1 > signature.Length - 1 
+
+            printfn "m: %A" m
+            printfn "signature: %A" signature
+            printfn "containsArgumentPropagation: %A" containsArgumentPropagation
+
+            let maybeArgPropagrationError = if containsArgumentPropagation then checkManipulation typeCheckingCtx m[signature.Length - 1..] line (ExpectedType signature[signature.Length - 1]) else None
+            if maybeArgPropagrationError.IsSome then maybeArgPropagrationError else
+
+            // if the manipulation contains an argument propagation, the full signature is used
+            // if equal or less, the manipulation determines how many parts of the signature are used
+            // this might not be right, but i'll leave it for now
+            let inputIStop = if containsArgumentPropagation then signature.Length - 2 else m.Length - 2
+            let inputSignature, outputSignature = signature[..inputIStop], signature[inputIStop+1..]
             let preparedOutputSignature = if outputSignature.Length = 1 then outputSignature.[0] else Function outputSignature
 
             if expectedOutputType <> AnyOut && expectedOutputType <> ExpectedType preparedOutputSignature then Some (IntermediateExcFPPure (sprintf "Expected output type for %s is %A, received %A" f expectedOutputType outputSignature) line) else
             
-            // TODO
-            // implement argument propagation here
-
-            typesMatch inputSignature m[1..]
+            // skip the last argument if it is an argument propagation
+            let inputSignatureLeftToCheck = if containsArgumentPropagation then inputSignature[..inputSignature.Length - 2] else inputSignature
+            typesMatch inputSignatureLeftToCheck m[1..inputSignatureLeftToCheck.Length]
         | Manipulation m' -> 
             // the first manipulation is a curried function, so we can append the first args to the rest
             let newManip = Array.concat [ m' ; m.[1..] ]
@@ -120,15 +130,7 @@ module TypeChecking =
             match signature with
             | BaseFnType s -> [| BaseFnType s |]
             | Function fs -> fs
-
-        // this is kind of sus
-        let rec signaturesMatch (expected: FnType) (actual: FnType) =
-            match expected, actual with
-            | BaseFnType s1, BaseFnType s2 -> s1 = s2
-            | Function fs1, Function fs2 -> fs1 |> Array.zip fs2 |> Array.forall (fun (a, b) -> signaturesMatch a b)
-            | Function fs1, BaseFnType _ -> fs1.Length = 1 && signaturesMatch fs1.[0] actual
-            | BaseFnType _, Function fs2 -> fs2.Length = 1 && signaturesMatch expected fs2.[0]
-
+        
         let getInOutSeparate (typeCheckingCtx: TypeCheckingCtx) f : FnType array * FnType = 
             let signature = typeCheckingCtx.signatures[f]
             signature[..signature.Length-2], signature[signature.Length-1]

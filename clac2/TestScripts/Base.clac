@@ -22,9 +22,10 @@ type basicArithmetic2 : int2 int2 int2
 -- type int6 : int5
 -- type int7 : int8
 
--- Overloaded forwarding - no longer supported
--- add 5 add 2 3
--- let plus3 a b c : int int int int = add a add b c
+-- Overloaded forwarding
+add 1 add 2 3
+let plus3 a b c : int int int int = add a add b c
+plus3 1 2 3
 
 -- manipulations that should fail
 -- add id 5

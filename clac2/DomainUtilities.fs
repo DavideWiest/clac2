@@ -41,7 +41,7 @@ let tupledToIntermediateResult (result: int * GenericResult<'a>) : IntermediateC
 
 // FullGenericException and FullClacResult
 
-let FullExc (location: string option) (genExcWithLine: IntermediateException) = { genExcWithLine = genExcWithLine; fileLocation = location }
+let FullExc (location: string option) (genExcWithLine: IntermediateException) = { genExcWithLine = genExcWithLine; fileLocation = location; locTrace = None }
 let FullExcFromParts (e: string) (line: int) (location: string option) = e |> GenExc |> IntermediateExc line |> FullExc location |> Error
 
 let toFullResult (location: string option) (result: IntermediateClacResult<'a>) : FullClacResult<'a> =
@@ -51,19 +51,32 @@ let tupledToFullExc (result: string option * IntermediateClacResult<'a>) : FullC
     let (location, err) = result
     toFullResult location err
 
+let addLocTraceToExc locTrace (e: FullGenericException) = { e with locTrace = Some locTrace }
+let addLocTraceToResult locTrace (r: FullClacResult<'a>) = r |> mapError (addLocTraceToExc locTrace)
+
 let printFullExc callDir (e: FullGenericException) =
     let relFilePath path = System.IO.Path.GetRelativePath (callDir,path)
-    let lineSubStr = if e.genExcWithLine.line.IsSome then sprintf " at line %d" (e.genExcWithLine.line.Value+1) else ""
-    let fileSubStr = " in " + fileLocOptionToString (e.fileLocation |> Option.map relFilePath)
+    let (fileSubStr, lineSubStr, fileLink) = locPartsToString e.genExcWithLine.line e.fileLocation relFilePath
+    printfn "Error occured%s%s: %s" fileSubStr lineSubStr fileLink
+    if e.locTrace.IsSome then
+        for loc in e.locTrace.Value do
+            let (subFileSubStr, subLineSubStr, subFileLink) = locPartsToString (Some loc.lineLocation) loc.fileLocation relFilePath
+            printfn "   - %s%s: %s" subFileSubStr subLineSubStr subFileLink
+    printfn "%s" e.genExcWithLine.genExc.message
+
+let locPartsToString maybeLine maybeFile relFilePath = 
+    let lineSubStr = if maybeLine.IsSome then sprintf " at line %d" (maybeLine.Value+1) else ""
+    let fileSubStr = " in " + fileLocOptionToString (maybeFile |> Option.map relFilePath)
     let fileLink = 
-        match (e.fileLocation, e.genExcWithLine.line) with
+        match (maybeFile, maybeLine) with
         | Some fileLoc, Some lineLoc -> sprintf "%s:%d" fileLoc (lineLoc+1)
         | Some fileLoc, None -> fileLoc
         | _ -> ""
-    printfn "Error occured%s%s: %s" fileSubStr lineSubStr fileLink
-    printfn "%s" e.genExcWithLine.genExc.message
+
+    fileSubStr, lineSubStr, fileLink
 
 let fileLocOptionToString maybeFileLoc = maybeFileLoc |> Option.defaultValue ("interactive")
+
 
 // Utilities
 

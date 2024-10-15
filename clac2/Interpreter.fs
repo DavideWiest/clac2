@@ -7,9 +7,8 @@ open FSharp.Core.Result
 open Clac2.DomainUtilities
 
 let evaluateFile (stdCtx: StandardContext) (program: Program) : FullClacResult<DefinedValue> array =
-    let dummyLoc = { fileLocation = None; lineLocation = 0 }
     // stdCtx must not be used after following line - its data is incomplete compared to the program and evalCtx
-    let evalCtx = EvalCtx.init stdCtx program dummyLoc
+    let evalCtx = EvalCtx.init stdCtx program
 
     printfn "%A" program.mainFile.content.expressions
 
@@ -19,7 +18,7 @@ let evaluateFile (stdCtx: StandardContext) (program: Program) : FullClacResult<D
 let evaluateOne evalCtx loc manipulation substitutions  =
     printfn "evaluateOne for %A" manipulation
     printfn "- subs: %A" substitutions
-    let newEvalCtx = { evalCtx with currentLoc = loc }
+    let newEvalCtx = { evalCtx with locTrace = loc :: evalCtx.locTrace }
 
     if manipulation.Length = 1 then substituteOne newEvalCtx substitutions manipulation[0] else
 
@@ -27,7 +26,7 @@ let evaluateOne evalCtx loc manipulation substitutions  =
     printfn "- subsManip: %A" substitutedManipulationTail
 
     substitutedManipulationTail
-    |> bind (eval newEvalCtx (StartReference manipulation[0]))
+    |> bind (eval newEvalCtx manipulation[0])
 
 let substituteMany evalCtx (substitutions: Map<string, DefinedValue>) m : FullClacResult<DefinedValue array> = 
     m |> Array.map (substituteOne evalCtx substitutions) |> combineResultsToArray
@@ -46,13 +45,13 @@ let rec substituteOne evalCtx (substitutions: Map<string, DefinedValue>) x : Ful
         
         EvalCtx.FullExcFromEvalCtx ("Function not found (at evaluation during substitution): " + f) evalCtx
     // calls eval over evaluateOne with substitutions
-    | Manipulation m -> evaluateOne evalCtx evalCtx.currentLoc m substitutions
+    | Manipulation m -> evaluateOne evalCtx (EvalCtx.getCurrentLoc evalCtx) m substitutions
 
-type EvalStartFn = StartReference of Reference | DefinedStartFn of string * DefinedFn
+// TODO: implement argument propagation
 
-let rec eval evalCtx (startFn: EvalStartFn) (args: DefinedValue array) : FullClacResult<DefinedValue> =
+let rec eval evalCtx (startFn: Reference) (args: DefinedValue array) : FullClacResult<DefinedValue> =
     match startFn with
-    | StartReference(Fn f) ->
+    | Fn f ->
         printfn "--- eval %s with %A ---" f args
 
         if isPrimitive f then 
@@ -62,32 +61,33 @@ let rec eval evalCtx (startFn: EvalStartFn) (args: DefinedValue array) : FullCla
             if evalCtx.customAssignmentMap.ContainsKey f |> not then EvalCtx.FullExcFromEvalCtx ("Function " + f + " not found (at interpreter)") evalCtx else
 
             let fn = evalCtx.customAssignmentMap[f]
+            if args.Length > fn.signature - 1 then 
+                evaluateOne evalCtx (EvalCtx.getCurrentLoc evalCtx)
+                |> bind (fun x ->
+                    // todo 
+                ) 
+            else  
             let substitutions = args |> Array.zip fn.args |> Map.ofArray
 
             evaluateOne evalCtx fn.loc fn.fn substitutions
-    | StartReference(Manipulation m) ->
-        printfn "--- eval manipulation %A with %A ---" m args
-
-        evaluateOne evalCtx evalCtx.currentLoc m Map.empty
-        |> bind (fun newStartFnValue -> 
-            match newStartFnValue with 
-            | DefinedFn (name, fn) -> 
-                let newStartFn = DefinedStartFn (name, fn)
-                eval evalCtx newStartFn args
-            | DefinedPrimitive p -> EvalCtx.FullExcFromEvalCtx ("Primitive " + p.ToString() + " used as function.") evalCtx
-        ) 
-    | DefinedStartFn (name, fn) -> fn args |> toGenericResult |> EvalCtx.toFullExcFromEvalCtx evalCtx
+    | Manipulation m -> 
+        evaluateOne evalCtx (EvalCtx.getCurrentLoc evalCtx) m Map.empty
+        |> bind (fun x -> 
+            match x with
+            | DefinedFn (name, fn) -> fn args |> toGenericResult |> EvalCtx.toFullExcFromEvalCtx evalCtx
+            | DefinedPrimitive _ -> if args.Length = 0 then Ok x else EvalCtx.FullExcFromEvalCtx ("Manipulation " + manipulationToString m + "takes zero additional arguments, but got some (at interpreter).") evalCtx
+        )
  
 let toDefinedFn evalCtx f = DefinedFn (evalCtx.stdFunctionsMap[f].name, evalCtx.stdFunctionsMap[f].DefinedFn)
 
 type EvalCtx = {
     customAssignmentMap: Map<string, CallableFunction>
     stdFunctionsMap: Map<string, DefinedCallableFunction>
-    currentLoc: ProgramLocation
+    locTrace: ProgramLocation list
 }
 
 module EvalCtx =
-    let init stdCtx program loc  =        
+    let init stdCtx program  =        
         let file = program.mainFile
         let allFiles = 
             program.secondaryFiles
@@ -104,7 +104,7 @@ module EvalCtx =
                 stdCtx.definedCtx.functions 
                 |> Array.map (fun x -> x.name, x) 
                 |> Map.ofArray
-            currentLoc = loc
+            locTrace = [] // empty - do not pass dummyLoc here
         }
 
     let getSignature evalCtx f =
@@ -113,6 +113,13 @@ module EvalCtx =
         else Error (GenExc ("Function not found (at evaluation): " + f))
 
     let toFullExcFromEvalCtx (evalCtx: EvalCtx) result: FullClacResult<'a> =
-        result |> toIntermediateResult evalCtx.currentLoc.lineLocation |> toFullResult evalCtx.currentLoc.fileLocation
+        let trace, lastExc = splitToTraceAndLastExc evalCtx
+        result |> toIntermediateResult lastExc.lineLocation |> toFullResult lastExc.fileLocation |> addLocTraceToResult trace
 
-    let FullExcFromEvalCtx (e: string) (evalCtx: EvalCtx) = e |> GenExc |> IntermediateExc (evalCtx.currentLoc.lineLocation) |> FullExc evalCtx.currentLoc.fileLocation |> Error
+    let FullExcFromEvalCtx (e: string) (evalCtx: EvalCtx) = 
+        let trace, lastExc = splitToTraceAndLastExc evalCtx
+        e |> GenExc |> IntermediateExc (lastExc.lineLocation) |> FullExc lastExc.fileLocation |> addLocTraceToExc evalCtx.locTrace |> Error
+
+    let splitToTraceAndLastExc evalCtx = evalCtx.locTrace[1..], evalCtx.locTrace[0]
+
+    let getCurrentLoc evalCtx = evalCtx.locTrace[0]

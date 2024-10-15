@@ -104,3 +104,25 @@ middle end old typesmatch:
                         //    |> Option.orElse(typesMatch fs m' f)
                 )
             ) None (Array.zip inputSignature args)
+
+middle end, signatures:
+
+        let rec signaturesMatch (expected: FnType) (actual: FnType) =
+            match expected, actual with
+            | BaseFnType s1, BaseFnType s2 -> s1 = s2
+            | Function fs1, Function fs2 -> fs1 |> Array.zip fs2 |> Array.forall (fun (a, b) -> signaturesMatch a b)
+            | Function fs1, BaseFnType _ -> fs1.Length = 1 && signaturesMatch fs1.[0] actual
+            | BaseFnType _, Function fs2 -> fs2.Length = 1 && signaturesMatch expected fs2.[0]
+
+interpreter: eval case of manipulation as startFn:
+
+printfn "--- eval manipulation %A with %A ---" m args
+
+        evaluateOne evalCtx (EvalCtx.getCurrentLoc evalCtx) m Map.empty
+        |> bind (fun newStartFnValue -> 
+            match newStartFnValue with 
+            | DefinedFn (name, fn) -> 
+                let newStartFn = DefinedStartFn (name, fn)
+                eval evalCtx newStartFn args
+            | DefinedPrimitive p -> EvalCtx.FullExcFromEvalCtx ("Primitive " + p.ToString() + " used as function.") evalCtx
+        ) 

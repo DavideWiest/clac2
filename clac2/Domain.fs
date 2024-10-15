@@ -140,6 +140,7 @@ type IntermediateClacResult<'a> = Result<'a, IntermediateException>
 type FullGenericException = {
     genExcWithLine: IntermediateException
     fileLocation: string option
+    locTrace: ProgramLocation list option
 }
 
 type FullClacResult<'a> = Result<'a, FullGenericException>

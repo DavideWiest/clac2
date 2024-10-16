@@ -54,7 +54,15 @@ type CallableFunction = {
     //innerAssignments: CallableFunction array
     manip: Manipulation
     loc: ProgramLocation
+    fnOptions: FnOptions
 }
+
+type FnOptions = {
+    fixation: OperatorFixation
+    noMemo: bool
+}
+
+type OperatorFixation = Prefix | Infix | Postfix
 
 type FreeManipulation = {
     manip: Manipulation

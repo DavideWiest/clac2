@@ -21,6 +21,7 @@ type UnparsedCallableFunction = {
     fn: NestedItemsArray<string>
     // for later
     //innerAssignments: UnparsedCallableFunction array
+    fnOptions: FnOptions
 }
 
 type UnparsedTypeDefinition = {
@@ -93,8 +94,14 @@ let ToUnparsedLineInner (line: string) : GenericResult<UnparsedLine> =
         line |> ToUnparsedManipulation |> map UnparsedExpression
 
 let ToUnparsedCallableFunction (line: string) : GenericResult<UnparsedCallableFunction> =
-    let parts: string array = line |> Parsing.trimSplit [| ' ' |]
-    if parts.Length < 6 then GenExcError "Assignment missing parts. Missing space?" else
+    let partsBefore: string array = line |> Parsing.trimSplit [| ' ' |]
+
+    if partsBefore.Length < 2 then GenExcError "Assignment missing parts. Missing space?" else
+    
+    let fnOptionStrings, (parts: string array) = separateFnOptions [] partsBefore[1..]
+
+    if List.contains "infix" fnOptionStrings && List.contains "postfix" fnOptionStrings then GenExcError "Function cannot be both infix and postfix." else 
+    if parts.Length < 5 then GenExcError "Assignment missing parts. Missing space?" else
 
     let firstColonI = parts |> Array.findIndex (fun x -> x = ":")
     let firstEqualI = parts |> Array.findIndex (fun x -> x = "=")
@@ -120,9 +127,26 @@ let ToUnparsedCallableFunction (line: string) : GenericResult<UnparsedCallableFu
                 unparsedSignature = signatureParts
                 args = args
                 fn = fnBody
+                fnOptions = getFnOptions fnOptionStrings
             }
         )
     )
+
+let rec separateFnOptions optionsAcc (parts: string array) =
+    if Array.contains parts[0] FunctionData.fnOptions then
+        separateFnOptions (parts[0]::optionsAcc) parts.[1..]
+    else
+        optionsAcc, parts
+
+let getFnOptions optionStrings =
+    let isPostFix = List.contains "postfix" optionStrings
+    let isInfix = List.contains "infix" optionStrings
+    let isNoMemo = List.contains "noMemo" optionStrings
+
+    {
+        fixation = (if isPostFix || isInfix then (if isPostFix then Postfix else Infix) else Prefix)
+        noMemo = isNoMemo
+    }
 
 let extractFullSignature rawSignature: GenericResult<NestedItemsArray<string>> =
     let splitTypes (typeRef: string) =
@@ -182,6 +206,7 @@ let ParseCallableFunction loc definitionContext (f: UnparsedCallableFunction) : 
             args = f.args
             manip = fn
             loc = loc
+            fnOptions = f.fnOptions
         } |> Ok
     )
 

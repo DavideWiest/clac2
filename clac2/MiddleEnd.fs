@@ -18,6 +18,8 @@ module Reconstruction =
         operatorFixationCorrection
     |]
 
+    type ManipulationWrapper = Manip of Manipulation | CallableFunction of CallableFunction
+
     let nestArgumentPropagations stdCtx (program: Program) =
         let functionSignatureMap = TypeChecking.TypeCheckingCtx.generateFunctionSignatureMap stdCtx program (Some program.mainFile.content)
 
@@ -31,11 +33,48 @@ module Reconstruction =
             | CallableFunction a -> nestArgumentPropagationsInner (TypeChecking.Signature.addArgsToSignatureMap a functionSignatureMap) (Manip a.manip)
 
         mapAllManipulations program (nestArgumentPropagationsInner functionSignatureMap)
-
+        
     let operatorFixationCorrection stdCtx (program: Program) =
-        program
+        let fixationMap =
+            (Array.append (program.secondaryFiles |> Array.map (fun x -> x.content)) [| program.mainFile.content |])
+            |> Array.map extractFixationFromFile
+            |> Array.concat
+            |> Map.ofArray
 
-    type ManipulationWrapper = Manip of Manipulation | CallableFunction of CallableFunction
+        mapAllManipulations program (operatorFixationToPrefixOuter fixationMap)
+
+    let extractFixationFromFile (orderedFile: OrderedFile) =
+        orderedFile.assignments
+        |> Array.map (fun x -> x.name, x.fnOptions.fixation)
+
+    let operatorFixationToPrefixOuter (fixationMap: Map<string, OperatorFixation>) (manip: ManipulationWrapper) =
+        match manip with
+        | Manip m -> operatorFixationToPrefix fixationMap m
+        | CallableFunction fn -> operatorFixationToPrefix fixationMap fn.manip
+        
+    let rec operatorFixationToPrefix (fixationMap: Map<string, OperatorFixation>) (manipFirst: Manipulation) =
+        let rec fixationFixOneManip (manip: Manipulation) =
+            if manip.Length < 2 then manip
+            elif fixationMapLookup fixationMap manip[manip.Length-1] = Some Postfix then Array.append [| manip[manip.Length-1] |] manip[..manip.Length-2]
+            elif manip.Length <> 3 then manip else
+
+            let f,s,t = manip[0], manip[1], manip[2]
+
+            if fixationMapLookup fixationMap s = Some Infix then [| s; f; t |] else manip
+
+        let rec operatorFixationToPrefixOneLevel (x: Reference) =
+            match x with
+            | Fn f -> Fn f
+            | Manipulation manip -> fixationFixOneManip manip |> Array.map operatorFixationToPrefixOneLevel |> Manipulation
+        
+        manipFirst
+        |> fixationFixOneManip
+
+    let fixationMapLookup (fixationMap: Map<string, OperatorFixation>) (x: Reference) =
+        match x with
+        | Fn fn -> Some fixationMap[fn]
+        | Manipulation m -> None
+    
 
     let mapAllManipulations program mapF = 
         let mapExpression (e: FreeManipulation) =  { e with manip = mapF (Manip e.manip) }
@@ -46,7 +85,7 @@ module Reconstruction =
         let newSecondaryFiles = program.secondaryFiles |> Array.map (fun f -> { f with content = mapFile f.content })
 
         { program with mainFile = newMainFile; secondaryFiles = newSecondaryFiles }
-        
+
 
 module TypeChecking =
 

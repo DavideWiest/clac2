@@ -10,7 +10,7 @@ let evaluateFile (stdCtx: StandardContext) (program: Program) : FullClacResult<D
     let evalCtx = EvalCtx.init stdCtx program
 
     program.mainFile.content.expressions
-    |> Array.map (fun freeManip -> evaluateOne evalCtx freeManip.loc freeManip.manip)
+    |> Array.map (fun freeManip -> evaluateOne evalCtx freeManip.loc freeManip.manip Map.empty)
 
 let evaluateOne evalCtx loc manipulation substitutions  =
     printfn "evaluateOne for %A" manipulation
@@ -26,7 +26,7 @@ let evaluateOne evalCtx loc manipulation substitutions  =
     |> bind (fun (substitutedManipulation: SubsitutionResult array) ->
         let definedManipulationTail = convertToDefinedManipulation newEvalCtx substitutedManipulation[1..]
         match substitutedManipulation[0] with
-        | Ref f -> definedManipulationTail |> bind (eval newEvalCtx f)
+        | Ref f -> EvalCtx.FullExcFromEvalCtx newEvalCtx ("Undefined function " + f.ToString() + " used (at interpreter).")
         | Val (DefinedPrimitive p) -> if substitutedManipulation.Length = 1 then p |> DefinedPrimitive |> Ok else EvalCtx.FullExcFromEvalCtx newEvalCtx ("Primitive " + p.ToString() + " used as function (at interpreter).")
         | Val (DefinedFn (name, fn)) -> definedManipulationTail |> bind (fun args -> fn args |> EvalCtx.toFullExcFromEvalCtx newEvalCtx)
     )
@@ -55,7 +55,7 @@ let rec substituteOne evalCtx (substitutions: Map<string, DefinedValue>) x : Ful
         // substitutions first to override globally defined functions
         if substitutions.ContainsKey f then substitutions[f] |> Val |> Ok else
         // do not pass down defined arguments as substitutions
-        if evalCtx.customAssignmentMap.ContainsKey f then evaluateOne evalCtx evalCtx.customAssignmentMap[f].loc evalCtx.customAssignmentMap[f].fn Map.empty |> map Val else
+        if evalCtx.customAssignmentMap.ContainsKey f then evaluateOne evalCtx evalCtx.customAssignmentMap[f].loc evalCtx.customAssignmentMap[f].manip Map.empty |> map Val else
         if evalCtx.stdFunctionsMap.ContainsKey f then toDefinedFn evalCtx f |> Val |> Ok else
         
         Ref x |> Ok

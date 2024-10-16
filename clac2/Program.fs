@@ -11,7 +11,7 @@ open Clac2.MiddleEnd
 
 [<EntryPoint>]
 let main args =
-    let baseFuncsCombined = Array.concat [BuildIn.arithmeticFuncs]
+    let baseFuncsCombined = Array.concat [BuiltIn.arithmeticFuncs]
     let stdCtx = StandardContext.buildStandardContext baseFuncsCombined Types.baseTypes 
 
     args

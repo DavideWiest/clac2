@@ -38,14 +38,6 @@ module Files =
     // let reservedModuleName = [| "Clac", "Std" |]
 
 module BuildIn =
-    let baseVars = 
-        [|
-            ("pi", 3)
-            ("e", 3)
-        |]
-        |> Array.map (fun (k, v) -> k, v |> PrimitiveInt |> DefinedPrimitive)
-        |> Array.map (Conversion.FSharpConstantToFn Types.intType)
-
     let basicArithmeticArgsAndSignature = [| ("n1", Types.intType); ("n2", Types.intType) |]
 
     let arithmeticFuncs = 
@@ -57,11 +49,11 @@ module BuildIn =
             ("pow", (fun x y -> int (float x ** float y)))
         |]
         |> Array.map (fun (k, f) -> k, fun input -> Array.reduce f input)
-        |> Array.map (fun (k, f) -> k, fun input -> Conversion.fnTypeToIntAdapter f input 2)
+        |> Array.map (fun (k, f) -> k, fun input -> Conversion.fnTypeToIntAdapter k f input 2)
         |> Array.map (Conversion.fSharpFunctionToFn basicArithmeticArgsAndSignature Types.intType)
 
 module StandardContext =
-    let buildStandardContext (baseFuncs: DefinedCallableFunction array) (supportedTypes: string array) =
+    let buildStandardContext (baseFuncs: BuiltInFn array) (supportedTypes: string array) =
         {
             defCtx = {
                 types = supportedTypes
@@ -73,26 +65,22 @@ module StandardContext =
         }
 
 module Conversion = 
-    let FSharpConstantToFn constantType (x: string * DefinedValue) =
-        {
-            name = x |> fst
-            signature = [| constantType |]
-            args = [| |]
-            DefinedFn = fun _ -> x |> snd |> Ok
-        }
-
-    let fSharpFunctionToFn (typedArgs: (string * FnType) array) (returnType: FnType) (nameAndFn: string * DefinedFn) =
+    let fSharpFunctionToFn (typedArgs: (string * FnType) array) (returnType: FnType) (nameAndFn: string * DefinedManipulation) =
         {
             name = nameAndFn |> fst
             signature = typedArgs |> Array.map snd |> Array.append [| returnType |]
             args = typedArgs |> Array.map fst
-            DefinedFn = nameAndFn |> snd
+            definedManip = nameAndFn |> snd
         }
 
-    let fnTypeToIntAdapter (f: int array -> int) (input: DefinedValue array) nArgs : Result<DefinedValue, string> =
-        if input.Length <> nArgs then Error "Internal Error: Wrong number of arguments for fnTypeToIntAdapter" else
+    let rec fnTypeToIntAdapter name (f: int array -> int) (input: DefinedValue array) nArgs : Result<DefinedValue, string> =
+        if input.Length > nArgs then Error ("Internal Error: Wrong number of arguments for fnTypeToIntAdapter for builtin function " + name) else
 
-        input
-        |> Array.map (definedValueToInt)
-        |> combineResultsToArray
+        if input.Length < nArgs then 
+            Ok (DefinedFn (name + sprintf " with %i/%i args curried" input.Length nArgs, fun args -> fnTypeToIntAdapter name f (Array.append input args) nArgs))
+        else
+
+        let maybeDefinedInput = input |> Array.map (definedValueToInt) |> combineResultsToArray
+
+        maybeDefinedInput
         |> bind (f >> PrimitiveInt >> DefinedPrimitive >> Ok)

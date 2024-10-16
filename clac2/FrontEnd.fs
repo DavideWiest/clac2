@@ -164,7 +164,7 @@ let ToUnparsedTypeDefinition (line: string) : GenericResult<UnparsedTypeDefiniti
 
 let ParseLine loc (definitionContext: DefinitionContext) (line: UnparsedLine) : GenericResult<Line> =
     match line with
-    | UnparsedExpression m -> m |> ParseManipulation definitionContext |> map (fun manipulation -> Expression { manipulation = manipulation; loc = loc })
+    | UnparsedExpression m -> m |> ParseManipulation definitionContext |> map (fun manipulation -> Expression { manip = manipulation; loc = loc })
     | UnparsedAssignment f -> f |> ParseCallableFunction loc definitionContext |> map Assignment
     | UnparsedTypeDefinition t -> t |> ParseTypeDefinition loc definitionContext |> map TypeDefinition
     | UnparsedModuleDeclaration m -> parseModuleDeclaration loc m
@@ -172,7 +172,7 @@ let ParseLine loc (definitionContext: DefinitionContext) (line: UnparsedLine) : 
 
 let ParseCallableFunction loc definitionContext (f: UnparsedCallableFunction) : GenericResult<CallableFunction> =
     let maybeSignature = f.unparsedSignature |> NestedItems.toFnType definitionContext 
-    let maybeFn = f.fn |> ParseManipulation {definitionContext with functions = Array.concat [definitionContext.functions; f.args]}
+    let maybeFn = f.fn |> ParseManipulation {definitionContext with functions = Array.append definitionContext.functions f.args}
 
     joinTwoResults maybeSignature maybeFn
     |> bind (fun (signature, fn) ->
@@ -180,7 +180,7 @@ let ParseCallableFunction loc definitionContext (f: UnparsedCallableFunction) : 
             name = f.name
             signature = signature
             args = f.args
-            fn = fn
+            manip = fn
             loc = loc
         } |> Ok
     )

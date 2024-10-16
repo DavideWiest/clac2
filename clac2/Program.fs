@@ -5,17 +5,19 @@ open Clac2.Modularization
 open Clac2.Interpreter
 open FSharp.Core.Result
 open Clac2.Language
+open Clac2.MiddleEnd
 
 // stdCtx for front/middle end and back end should be 2 different types
 
 [<EntryPoint>]
 let main args =
-    let baseFuncsCombined = Array.concat [BuildIn.arithmeticFuncs; BuildIn.baseVars]
+    let baseFuncsCombined = Array.concat [BuildIn.arithmeticFuncs]
     let stdCtx = StandardContext.buildStandardContext baseFuncsCombined Types.baseTypes 
 
     args
     |> getInput
     |> FileLoading.loadAndParseFiles stdCtx
+    |> map (fun (program, depMap) -> Reconstruction.reconstructProgram stdCtx program depMap)
     |> bind (TypeChecking.validateProgramTypes stdCtx)
     |> map (passAndReturn printProgram)
     |> bind (fun program -> program |> evaluateFile stdCtx |> combineResultsToArray)

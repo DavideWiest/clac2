@@ -4,17 +4,61 @@ open Clac2.Domain
 open Clac2.Utilities
 open Clac2.DomainUtilities
 
+module Reconstruction =
+    let reconstructProgram stdCtx (program: Program) (depMap: 'a) : Program * 'a =
+        let reconstructedProgram = applyReconstructionPipeline stdCtx program
+        (reconstructedProgram, depMap)
+
+    let applyReconstructionPipeline (stdCtx: StandardContext) (program: Program) =
+        reconstructionPipeline
+        |> Array.fold (fun acc f -> f stdCtx acc) program
+
+    let reconstructionPipeline: (StandardContext -> Program -> Program) array = [|
+        nestArgumentPropagations
+        operatorFixationCorrection
+    |]
+
+    let nestArgumentPropagations stdCtx (program: Program) =
+        let functionSignatureMap = TypeChecking.TypeCheckingCtx.generateFunctionSignatureMap stdCtx program (Some program.mainFile.content)
+
+        let rec nestArgumentPropagationsInner (functionSignatureMap: Map<string,Signature>) (manipParent: ManipulationWrapper) =
+            let propagate (m: Manipulation) sigLen = if m.Length - 1 > sigLen - 1 then Array.append m[..sigLen-2] [| Manipulation m[sigLen-1..] |] else m
+            match manipParent with
+            | Manip m -> 
+                match m[0] with
+                | Fn f -> if isPrimitive f then m else propagate m functionSignatureMap[f].Length
+                | Manipulation m' -> nestArgumentPropagationsInner functionSignatureMap (Manip (Array.append m'  m.[1..]))
+            | CallableFunction a -> nestArgumentPropagationsInner (TypeChecking.Signature.addArgsToSignatureMap a functionSignatureMap) (Manip a.manip)
+
+        mapAllManipulations program (nestArgumentPropagationsInner functionSignatureMap)
+
+    let operatorFixationCorrection stdCtx (program: Program) =
+        program
+
+    type ManipulationWrapper = Manip of Manipulation | CallableFunction of CallableFunction
+
+    let mapAllManipulations program mapF = 
+        let mapExpression (e: FreeManipulation) =  { e with manip = mapF (Manip e.manip) }
+        let mapAssignment (a: CallableFunction) = { a with manip = mapF (CallableFunction a) }
+        let mapFile (f: OrderedFile) = { f with expressions = f.expressions |> Array.map mapExpression; assignments = f.assignments |> Array.map mapAssignment }
+
+        let newMainFile = { program.mainFile with content = mapFile program.mainFile.content }
+        let newSecondaryFiles = program.secondaryFiles |> Array.map (fun f -> { f with content = mapFile f.content })
+
+        { program with mainFile = newMainFile; secondaryFiles = newSecondaryFiles }
+        
+
 module TypeChecking =
 
-    let validateTypes (stdCtx: StandardContext) (program: Program) (file: OrderedFile) : IntermediateClacResult<OrderedFile> =
-        match validateTypesInner stdCtx program file with
+    let validateTypes (stdCtx: StandardContext) (program: Program) (isMainFile: bool) (file: OrderedFile) : IntermediateClacResult<OrderedFile> =
+        match validateTypesInner stdCtx program isMainFile file with
         | None -> Ok file
         | Some e -> Error e
 
     // check types, then manipulations, then assignments
-    let validateTypesInner (stdCtx: StandardContext) (program: Program) (file: OrderedFile) : IntermediateException option = 
+    let validateTypesInner (stdCtx: StandardContext) (program: Program) (isMainFile: bool) (file: OrderedFile) : IntermediateException option = 
         // typeCheckingCtx should be precomputed for all files and passed into here - the file in question is the main one, append the function signature
-        let typeCheckingCtx = TypeCheckingCtx.init stdCtx program file
+        let typeCheckingCtx = TypeCheckingCtx.init stdCtx program file isMainFile
 
         checkTypeDefinitions stdCtx typeCheckingCtx file.typeDefinitions
         |> Option.orElse (checkManipulationsAnyOutputType typeCheckingCtx file.expressions)
@@ -49,21 +93,14 @@ module TypeChecking =
 
     let checkManipulationsAnyOutputType typeCheckingCtx manipulations : IntermediateException option =
         manipulations
-        |> Array.map (fun x -> x.loc.lineLocation, x.manipulation)
+        |> Array.map (fun x -> x.loc.lineLocation, x.manip)
         |> Array.tryPick (fun (i, x) -> checkManipulation typeCheckingCtx x i AnyOut)
 
     let checkAssignments typeCheckingCtx customAssignments : IntermediateException option =
         let checkAssignment (assignment: CallableFunction) =
-            let argumentsAsAssignments = 
-                assignment.args 
-                |> Array.mapi (fun i x -> 
-                    (x, Signature.UnpackInnerSignature assignment.signature[i] )
-                )
-                |> Map.ofArray
-
-            let newTypeCheckingCtx = { typeCheckingCtx with signatures = Map.merge argumentsAsAssignments typeCheckingCtx.signatures }
+            let newTypeCheckingCtx = { typeCheckingCtx with signatures = Signature.addArgsToSignatureMap assignment typeCheckingCtx.signatures }
             let expectedOutputType = ExpectedType assignment.signature[assignment.signature.Length-1]
-            checkManipulation newTypeCheckingCtx assignment.fn assignment.loc.lineLocation expectedOutputType
+            checkManipulation newTypeCheckingCtx assignment.manip assignment.loc.lineLocation expectedOutputType
 
         Array.tryPick checkAssignment customAssignments
 
@@ -84,6 +121,7 @@ module TypeChecking =
             ) None (Array.zip inputSignature args)
 
         if m.Length = 0 then 
+            // supports "()"/unit this way
             if expectedOutputType = AnyOut then None else Some (IntermediateExcFPPure ("Got empty manipulation when expecting output type of: " + expectedOutputType.ToString()) line)
         else
 
@@ -99,33 +137,31 @@ module TypeChecking =
             if not (typeCheckingCtx.signatures.ContainsKey f) then Some (IntermediateExcWithoutLine (GenExc ("Internal Error: customFnsMap does not contain function " + f + ". It probably was not registered in the front end."))) else
 
             let signature = typeCheckingCtx.signatures[f]
-            let containsArgumentPropagation = m.Length - 1 > signature.Length - 1 
+            if m.Length - 1 > signature.Length - 1 then Some (IntermediateExcFPPure (sprintf "Too many arguments for %s: Expected %i, got %i." f (signature.Length-1) (m.Length-1)) line) else
 
-            printfn "m: %A" m
-            printfn "signature: %A" signature
-            printfn "containsArgumentPropagation: %A" containsArgumentPropagation
-
-            let maybeArgPropagrationError = if containsArgumentPropagation then checkManipulation typeCheckingCtx m[signature.Length - 1..] line (ExpectedType signature[signature.Length - 1]) else None
-            if maybeArgPropagrationError.IsSome then maybeArgPropagrationError else
-
-            // if the manipulation contains an argument propagation, the full signature is used
-            // if equal or less, the manipulation determines how many parts of the signature are used
-            // this might not be right, but i'll leave it for now
-            let inputIStop = if containsArgumentPropagation then signature.Length - 2 else m.Length - 2
+            let inputIStop = m.Length - 2
             let inputSignature, outputSignature = signature[..inputIStop], signature[inputIStop+1..]
-            let preparedOutputSignature = if outputSignature.Length = 1 then outputSignature.[0] else Function outputSignature
+            let preparedOutputSignature = if outputSignature.Length = 1 then outputSignature[0] else Function outputSignature
 
             if expectedOutputType <> AnyOut && expectedOutputType <> ExpectedType preparedOutputSignature then Some (IntermediateExcFPPure (sprintf "Expected output type for %s is %A, received %A" f expectedOutputType outputSignature) line) else
             
-            // skip the last argument if it is an argument propagation
-            let inputSignatureLeftToCheck = if containsArgumentPropagation then inputSignature[..inputSignature.Length - 2] else inputSignature
-            typesMatch inputSignatureLeftToCheck m[1..inputSignatureLeftToCheck.Length]
+            typesMatch inputSignature m[1..]
         | Manipulation m' -> 
             // the first manipulation is a curried function, so we can append the first args to the rest
             let newManip = Array.concat [ m' ; m.[1..] ]
             checkManipulation typeCheckingCtx newManip line expectedOutputType
 
     module Signature =
+        let addArgsToSignatureMap assignment (signatureMap: Map<string, Signature>) =
+            let argumentsAsAssignments = 
+                assignment.args 
+                |> Array.mapi (fun i x -> 
+                    (x, Signature.UnpackInnerSignature assignment.signature[i] )
+                )
+                |> Map.ofArray
+
+            Map.merge argumentsAsAssignments signatureMap
+
         let UnpackInnerSignature signature =
             match signature with
             | BaseFnType s -> [| BaseFnType s |]
@@ -142,7 +178,7 @@ module TypeChecking =
     }
 
     module TypeCheckingCtx =
-        let init (stdCtx: StandardContext) (program: Program) (file: OrderedFile) : TypeCheckingCtx =
+        let init (stdCtx: StandardContext) (program: Program) (file: OrderedFile) isMainFile : TypeCheckingCtx =
             let allTypeDefinitions = 
                 program.secondaryFiles
                 |> Array.map (fun f -> f.content.typeDefinitions)
@@ -155,20 +191,21 @@ module TypeChecking =
                 |> Map.ofArray
 
             // only secondary files are added, excluding the main file
-            let functionSignatureMap = 
-                [
-                    file.assignments |> Array.map (fun x -> x.name, x.signature)
-                    program.secondaryFiles |> Array.map (fun f -> f.content.assignments |> Array.map (fun x -> x.name, x.signature)) |> Array.concat
-                    stdCtx.definedCtx.functions |> Array.map (fun x -> x.name, x.signature)
-                ] 
-                |> Array.concat
-                |> Map.ofArray
-
-            printfn "functionSignatureMap: %A" (getKeys functionSignatureMap)
+            let functionSignatureMap = generateFunctionSignatureMap stdCtx program (if isMainFile then Some file else None) // save computation
 
             {
                 types = typeMap
                 signatures = functionSignatureMap
             }
+
+        let generateFunctionSignatureMap (stdCtx: StandardContext) program file : Map<string, Signature> =
+            let typesInFile = if file.IsNone then [||] else file.Value.assignments |> Array.map (fun x -> x.name, x.signature)
+            [
+                typesInFile
+                program.secondaryFiles |> Array.map (fun f -> f.content.assignments |> Array.map (fun x -> x.name, x.signature)) |> Array.concat
+                stdCtx.definedCtx.functions |> Array.map (fun x -> x.name, x.signature)
+            ]
+            |> Array.concat
+            |> Map.ofArray
 
 let getLineForType customTypes f : int option = if customTypes.ContainsKey f then Some customTypes[f].loc.lineLocation else None

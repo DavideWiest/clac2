@@ -77,5 +77,5 @@ let toDefinedFn evalCtx f = DefinedFn (evalCtx.stdFunctionsMap[f].name, evalCtx.
 
 let definedValueFnToReference evalCtx (v: DefinedValue) : FullClacResult<Reference> =
     match v with
-    | DefinedPrimitive p -> FullExcFromEvalCtx "Primitive used as function." evalCtx
+    | DefinedPrimitive p -> FullExcFromEvalCtx ("Primitive" + p.ToString() + "used as function.") evalCtx
     | DefinedFn (name, _) -> Fn name |> Ok

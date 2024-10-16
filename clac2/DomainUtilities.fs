@@ -159,11 +159,11 @@ let lineToString (line: Line) =
     let exprToString m = m |> Array.map string |> String.concat " "
 
     match line with
-    | Expression m -> exprToString m.manipulation
+    | Expression m -> exprToString m.manip
     | Assignment f -> 
         let args = (f.args |> String.concat " ")
         let signature = (f.signature |> Array.map (fun x -> x.ToString()) |> String.concat " ")
-        let fnBody = exprToString f.fn
+        let fnBody = exprToString f.manip
 
         sprintf "let %s %s : %s = %s" f.name args signature fnBody
     | TypeDefinition t -> 

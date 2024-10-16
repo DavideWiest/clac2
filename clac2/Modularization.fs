@@ -86,8 +86,8 @@ module FileLoading =
                         let depMemoNew2 = Map.add (Some dep) depDefCtx depMemoNew
 
                         Ok ({
-                            types = Array.concat [accDefCtx.types; depDefCtx.types]; 
-                            functions = Array.concat [accDefCtx.functions; depDefCtx.functions]
+                            types = Array.append accDefCtx.types depDefCtx.types; 
+                            functions = Array.append accDefCtx.functions depDefCtx.functions
                         }, depMemoNew2, fileContentsMemoNew)
                     )
                 )
@@ -124,13 +124,13 @@ module TypeChecking =
             fileArr
             |> Array.map (fun file -> file.location, file.content)
             |> Array.map (fun (loc, orderedFile) -> 
-                Some loc, orderedFile |> TypeChecking.validateTypes stdCtx program
+                Some loc, orderedFile |> TypeChecking.validateTypes stdCtx program false
             )
             |> Array.map tupledToFullExc
             |> combineResultsToArray
 
         program.mainFile.content
-        |> (TypeChecking.validateTypes stdCtx program)
+        |> (TypeChecking.validateTypes stdCtx program true)
         |> toFullResult program.mainFile.maybeLocation
         |> bind (fun _ -> validateFileArray program.secondaryFiles)
         |> map (fun _ -> program)
@@ -144,6 +144,6 @@ module DefCtx =
 
     let mergeDefCtx defCtx1 defCtx2 =
         {
-            types = Array.concat [defCtx1.types; defCtx2.types]
-            functions = Array.concat [defCtx1.functions; defCtx2.functions]
+            types = Array.append defCtx1.types defCtx2.types
+            functions = Array.append defCtx1.functions defCtx2.functions
         }

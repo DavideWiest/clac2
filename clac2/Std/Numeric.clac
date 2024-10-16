@@ -1,4 +1,7 @@
 
+-- this is accurate enough
+let pi : int = 3
+let e : int = 3
 
 let square x : int*2 = mul x x
 let cube x : int*2 = mul x (mul x x) -- mul x mul x x

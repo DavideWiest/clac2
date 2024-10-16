@@ -52,12 +52,12 @@ type CallableFunction = {
     args: string array
     // for later
     //innerAssignments: CallableFunction array
-    fn: Manipulation
+    manip: Manipulation
     loc: ProgramLocation
 }
 
 type FreeManipulation = {
-    manipulation: Manipulation
+    manip: Manipulation
     loc: ProgramLocation
 }
 

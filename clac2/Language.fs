@@ -53,7 +53,7 @@ module BuildIn =
         |> Array.map (Conversion.fSharpFunctionToFn basicArithmeticArgsAndSignature Types.intType)
 
 module StandardContext =
-    let buildStandardContext (baseFuncs: BuiltInFn array) (supportedTypes: string array) =
+    let buildStandardContext (baseFuncs: DefinedCallableFunction array) (supportedTypes: string array) =
         {
             defCtx = {
                 types = supportedTypes
@@ -65,12 +65,12 @@ module StandardContext =
         }
 
 module Conversion = 
-    let fSharpFunctionToFn (typedArgs: (string * FnType) array) (returnType: FnType) (nameAndFn: string * DefinedManipulation) =
+    let fSharpFunctionToFn (typedArgs: (string * FnType) array) (returnType: FnType) (nameAndFn: string * DefinedFn) =
         {
             name = nameAndFn |> fst
             signature = typedArgs |> Array.map snd |> Array.append [| returnType |]
             args = typedArgs |> Array.map fst
-            definedManip = nameAndFn |> snd
+            DefinedFn = nameAndFn |> snd
         }
 
     let rec fnTypeToIntAdapter name (f: int array -> int) (input: DefinedValue array) nArgs : Result<DefinedValue, string> =

@@ -27,8 +27,8 @@ let evaluateOne evalCtx loc manipulation substitutions  =
         let definedManipulationTail = convertToDefinedManipulation newEvalCtx substitutedManipulation[1..]
         match substitutedManipulation[0] with
         | Ref f -> definedManipulationTail |> bind (eval newEvalCtx f)
-        | Val (DefinedPrimitive p) -> if substitutedManipulation.Length = 1 then p |> DefinedPrimitive |> Ok else EvalCtx.FullExcFromEvalCtx ("Primitive " + p.ToString() + " used as function (at interpreter).") newEvalCtx
-        | Val (DefinedFn (name, fn)) -> definedManipulationTail |> bind (fun args -> fn args |> toGenericResult |> EvalCtx.toFullExcFromEvalCtx newEvalCtx)
+        | Val (DefinedPrimitive p) -> if substitutedManipulation.Length = 1 then p |> DefinedPrimitive |> Ok else EvalCtx.FullExcFromEvalCtx newEvalCtx ("Primitive " + p.ToString() + " used as function (at interpreter).")
+        | Val (DefinedFn (name, fn)) -> definedManipulationTail |> bind (fun args -> fn args |> EvalCtx.toFullExcFromEvalCtx newEvalCtx)
     )
 
 let convertToDefinedManipulation evalCtx substitutedManip : FullClacResult<DefinedValue array> =
@@ -61,15 +61,16 @@ let rec substituteOne evalCtx (substitutions: Map<string, DefinedValue>) x : Ful
         Ref x |> Ok
     | Manipulation m -> evaluateOne evalCtx (EvalCtx.getCurrentLoc evalCtx) m substitutions |> map Val
 
+let toDefinedFn evalCtx f = DefinedFn (evalCtx.stdFunctionsMap[f].name, evalCtx.stdFunctionsMap[f].DefinedFn)
 
 type EvalCtx = {
     customAssignmentMap: Map<string, CallableFunction>
-    stdFunctionsMap: Map<string, BuiltInFn>
+    stdFunctionsMap: Map<string, DefinedCallableFunction>
     locTrace: ProgramLocation list
 }
 
 module EvalCtx =
-    let init stdCtx program  =        
+    let init stdCtx program  = 
         let file = program.mainFile
         let allFiles = 
             program.secondaryFiles

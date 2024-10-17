@@ -4,37 +4,44 @@ open Clac2.Domain
 open Clac2.Utilities
 open Clac2.DomainUtilities
 
-module Reconstruction =
-    let reconstructProgram stdCtx (program: Program) (depMap: 'a) : Program * 'a =
-        let reconstructedProgram = applyReconstructionPipeline stdCtx program
+module Normalization =
+    let normalizePrograms stdCtx program depMap =
+        let reconstructedProgram = applyNormalizationPipeline stdCtx program
         (reconstructedProgram, depMap)
 
-    let applyReconstructionPipeline (stdCtx: StandardContext) (program: Program) =
-        reconstructionPipeline
+    let applyNormalizationPipeline stdCtx program =
+        normalizationPipeline
         |> Array.fold (fun acc f -> f stdCtx acc) program
 
-    let reconstructionPipeline: (StandardContext -> Program -> Program) array = [|
+    let normalizationPipeline: (StandardContext -> Program -> Program) array = [|
         nestArgumentPropagations
         operatorFixationCorrection
     |]
 
-    type ManipulationWrapper = Manip of Manipulation | CallableFunction of CallableFunction
-
-    let nestArgumentPropagations stdCtx (program: Program) =
+    let nestArgumentPropagations stdCtx program =
         let functionSignatureMap = TypeChecking.TypeCheckingCtx.generateFunctionSignatureMap stdCtx program (Some program.mainFile.content)
 
-        let rec nestArgumentPropagationsInner (functionSignatureMap: Map<string,Signature>) (manipParent: ManipulationWrapper) =
-            let propagate (m: Manipulation) sigLen = if m.Length - 1 > sigLen - 1 then Array.append m[..sigLen-2] [| Manipulation m[sigLen-1..] |] else m
+        // argument propagation is not supported for curried functions either
+        let rec nestArgumentPropagationsInner (functionSignatureMap: Map<string,Signature>) manipParent =
+            let propagate (m: Manipulation) sigLen = if m.Length - 1 <= sigLen - 1 then m else Array.append m[..sigLen-2] [| Manipulation m[sigLen-1..] |]
             match manipParent with
             | Manip m -> 
                 match m[0] with
-                | Fn f -> if isPrimitive f then m else propagate m functionSignatureMap[f].Length
+                | Fn f -> 
+                    // prefix operators
+                    if isPrimitive f |> not then propagate m functionSignatureMap[f].Length
+                    // infix operators
+                    elif m.Length = 1 then m else
+                    match m[1] with
+                    | Fn f' -> if isPrimitive f' then m else propagate m functionSignatureMap[f'].Length
+                    | _ -> m
+                    // propagation not supported for postfix operators
                 | Manipulation m' -> nestArgumentPropagationsInner functionSignatureMap (Manip (Array.append m'  m.[1..]))
             | CallableFunction a -> nestArgumentPropagationsInner (TypeChecking.Signature.addArgsToSignatureMap a functionSignatureMap) (Manip a.manip)
 
         mapAllManipulations program (nestArgumentPropagationsInner functionSignatureMap)
         
-    let operatorFixationCorrection stdCtx (program: Program) =
+    let operatorFixationCorrection stdCtx program =
         let fixationMap =
             (Array.append (program.secondaryFiles |> Array.map (fun x -> x.content)) [| program.mainFile.content |])
             |> Array.map extractFixationFromFile
@@ -43,24 +50,24 @@ module Reconstruction =
 
         mapAllManipulations program (operatorFixationToPrefixOuter fixationMap)
 
-    let extractFixationFromFile (orderedFile: OrderedFile) =
+    let extractFixationFromFile orderedFile =
         orderedFile.assignments
         |> Array.map (fun x -> x.name, x.fnOptions.fixation)
 
-    let operatorFixationToPrefixOuter (fixationMap: Map<string, OperatorFixation>) (manip: ManipulationWrapper) =
+    type ManipulationWrapper = Manip of Manipulation | CallableFunction of CallableFunction
+
+    let operatorFixationToPrefixOuter fixationMap manip =
         match manip with
         | Manip m -> operatorFixationToPrefix fixationMap m
         | CallableFunction fn -> operatorFixationToPrefix fixationMap fn.manip
         
-    let rec operatorFixationToPrefix (fixationMap: Map<string, OperatorFixation>) (manipFirst: Manipulation) =
-        let rec fixationFixOneManip (manip: Manipulation) =
-            if manip.Length < 2 then manip
-            elif fixationMapLookup fixationMap manip[manip.Length-1] = Some Postfix then Array.append [| manip[manip.Length-1] |] manip[..manip.Length-2]
-            elif manip.Length <> 3 then manip else
-
-            let f,s,t = manip[0], manip[1], manip[2]
-
-            if fixationMapLookup fixationMap s = Some Infix then [| s; f; t |] else manip
+    let operatorFixationToPrefix fixationMap manipFirst =
+        let fixationFixOneManip (manip: Manipulation) =
+            match manip with
+            | [| _ |] -> manip
+            | _ when fixationMapLookup fixationMap manip.[manip.Length - 1] = Some Postfix -> Array.append [| manip.[manip.Length - 1] |] manip.[..manip.Length - 2]
+            | [| f; s; t |] when fixationMapLookup fixationMap s = Some Infix -> [| s; f; t |]
+            | _ -> manip
 
         let rec operatorFixationToPrefixOneLevel (x: Reference) =
             match x with
@@ -70,16 +77,15 @@ module Reconstruction =
         manipFirst
         |> fixationFixOneManip
 
-    let fixationMapLookup (fixationMap: Map<string, OperatorFixation>) (x: Reference) =
+    let fixationMapLookup fixationMap x =
         match x with
-        | Fn fn -> Some fixationMap[fn]
+        | Fn fn -> if fixationMap.ContainsKey fn then Some fixationMap[fn] else None // otherwise its a primitive
         | Manipulation m -> None
     
-
     let mapAllManipulations program mapF = 
         let mapExpression (e: FreeManipulation) =  { e with manip = mapF (Manip e.manip) }
         let mapAssignment (a: CallableFunction) = { a with manip = mapF (CallableFunction a) }
-        let mapFile (f: OrderedFile) = { f with expressions = f.expressions |> Array.map mapExpression; assignments = f.assignments |> Array.map mapAssignment }
+        let mapFile f = { f with expressions = f.expressions |> Array.map mapExpression; assignments = f.assignments |> Array.map mapAssignment }
 
         let newMainFile = { program.mainFile with content = mapFile program.mainFile.content }
         let newSecondaryFiles = program.secondaryFiles |> Array.map (fun f -> { f with content = mapFile f.content })
@@ -89,13 +95,13 @@ module Reconstruction =
 
 module TypeChecking =
 
-    let validateTypes (stdCtx: StandardContext) (program: Program) (isMainFile: bool) (file: OrderedFile) : IntermediateClacResult<OrderedFile> =
+    let validateTypes stdCtx program isMainFile file =
         match validateTypesInner stdCtx program isMainFile file with
         | None -> Ok file
         | Some e -> Error e
 
     // check types, then manipulations, then assignments
-    let validateTypesInner (stdCtx: StandardContext) (program: Program) (isMainFile: bool) (file: OrderedFile) : IntermediateException option = 
+    let validateTypesInner stdCtx program isMainFile file = 
         // typeCheckingCtx should be precomputed for all files and passed into here - the file in question is the main one, append the function signature
         let typeCheckingCtx = TypeCheckingCtx.init stdCtx program file isMainFile
 
@@ -104,9 +110,9 @@ module TypeChecking =
         |> Option.orElse (checkAssignments typeCheckingCtx file.assignments) 
 
     // not necessary to check all types, only custom ones (will run for each file)
-    let checkTypeDefinitions (stdCtx: StandardContext) typeCheckingCtx customTypes : IntermediateException option =    
+    let checkTypeDefinitions (stdCtx: StandardContext) typeCheckingCtx customTypes =    
         // no recursive type definitions - type system is a tree
-        let rec checkTypeDefsInner (typesHigherUp: string list) (x: TypeDefinition) =
+        let rec checkTypeDefsInner typesHigherUp (x: TypeDefinition) =
             let rec flattenSignature (x: FnType) =
                 match x with
                 | BaseFnType s -> [| s |]
@@ -130,12 +136,12 @@ module TypeChecking =
          
         Array.tryPick (checkTypeDefsInner []) customTypes
 
-    let checkManipulationsAnyOutputType typeCheckingCtx manipulations : IntermediateException option =
+    let checkManipulationsAnyOutputType typeCheckingCtx manipulations =
         manipulations
         |> Array.map (fun x -> x.loc.lineLocation, x.manip)
         |> Array.tryPick (fun (i, x) -> checkManipulation typeCheckingCtx x i AnyOut)
 
-    let checkAssignments typeCheckingCtx customAssignments : IntermediateException option =
+    let checkAssignments typeCheckingCtx customAssignments =
         let checkAssignment (assignment: CallableFunction) =
             let newTypeCheckingCtx = { typeCheckingCtx with signatures = Signature.addArgsToSignatureMap assignment typeCheckingCtx.signatures }
             let expectedOutputType = ExpectedType assignment.signature[assignment.signature.Length-1]
@@ -147,9 +153,9 @@ module TypeChecking =
         | AnyOut
         | ExpectedType of FnType
 
-    let rec checkManipulation typeCheckingCtx (m: Reference array) line (expectedOutputType: ExcpectedOutputType) =        
-        let rec typesMatch (inputSignature: FnType array) (args: Reference array) : IntermediateException option =
-            Array.fold (fun acc (signaturePart: FnType, arg: Reference) -> 
+    let rec checkManipulation typeCheckingCtx m line expectedOutputType =        
+        let rec typesMatch inputSignature args =
+            Array.fold (fun acc (signaturePart, arg) -> 
                 let preparedArg = 
                     match arg with
                     | Fn f -> [| Fn f |]
@@ -191,7 +197,7 @@ module TypeChecking =
             checkManipulation typeCheckingCtx newManip line expectedOutputType
 
     module Signature =
-        let addArgsToSignatureMap assignment (signatureMap: Map<string, Signature>) =
+        let addArgsToSignatureMap assignment signatureMap =
             let argumentsAsAssignments = 
                 assignment.args 
                 |> Array.mapi (fun i x -> 
@@ -206,7 +212,7 @@ module TypeChecking =
             | BaseFnType s -> [| BaseFnType s |]
             | Function fs -> fs
         
-        let getInOutSeparate (typeCheckingCtx: TypeCheckingCtx) f : FnType array * FnType = 
+        let getInOutSeparate typeCheckingCtx f =
             let signature = typeCheckingCtx.signatures[f]
             signature[..signature.Length-2], signature[signature.Length-1]
 
@@ -217,7 +223,7 @@ module TypeChecking =
     }
 
     module TypeCheckingCtx =
-        let init (stdCtx: StandardContext) (program: Program) (file: OrderedFile) isMainFile : TypeCheckingCtx =
+        let init stdCtx program file isMainFile =
             let allTypeDefinitions = 
                 program.secondaryFiles
                 |> Array.map (fun f -> f.content.typeDefinitions)
@@ -237,7 +243,7 @@ module TypeChecking =
                 signatures = functionSignatureMap
             }
 
-        let generateFunctionSignatureMap (stdCtx: StandardContext) program file : Map<string, Signature> =
+        let generateFunctionSignatureMap stdCtx program file =
             let typesInFile = if file.IsNone then [||] else file.Value.assignments |> Array.map (fun x -> x.name, x.signature)
             [
                 typesInFile
@@ -247,4 +253,4 @@ module TypeChecking =
             |> Array.concat
             |> Map.ofArray
 
-let getLineForType customTypes f : int option = if customTypes.ContainsKey f then Some customTypes[f].loc.lineLocation else None
+let getLineForType customTypes f  = if customTypes.ContainsKey f then Some customTypes[f].loc.lineLocation else None

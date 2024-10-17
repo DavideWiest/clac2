@@ -28,7 +28,7 @@ type basicArithmetic2 : int2 int2 int2
 
 -- Argument propagation
 add 1 add 2 3
-let plus3 a b c : int int int int = add a add b c
+let plus3 a b c : int*4 = add a add b c
 plus3 1 2 3
 
 -- manipulations that should fail
@@ -42,3 +42,11 @@ plus3 1 2 3
 let applyFive f : (int int) int = f 5
 let add2 : (int int) = add 2
 applyFive add2
+
+-- fixation
+let infix addButInfix a b : int*3 = add a b
+1 addButInfix 2
+let postfix subtractButPostfix a b : int*3 = subtract a b
+1 2 subtractButPostfix
+let postfix postfixWithMoreArgs a b c : int*4 = mul a subtract b c
+4 5 2 postfixWithMoreArgs -- 12

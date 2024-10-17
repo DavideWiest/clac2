@@ -29,10 +29,10 @@ type UnparsedTypeDefinition = {
     unparsedSignature: NestedItemsArray<string>
 }
 
-let parseFull fileLoc (stdCtx: StandardContext) (input: string) : FullClacResult<OrderedFile> =
+let parseFull fileLoc stdCtx input =
     preparse input |> toFullResult fileLoc |> bind (parseFullResult fileLoc stdCtx.defCtx)
 
-let preparse (input: string) : IntermediateClacResult<(int * UnparsedLine) array> =
+let preparse input =
     input
     |> Parsing.trimSplitSimple [| '\n' |]
     |> Array.mapi (fun i x -> (i, x))
@@ -45,7 +45,7 @@ let preparse (input: string) : IntermediateClacResult<(int * UnparsedLine) array
 
 let parseFullResult fileLoc defCtx preParsedLines = parse fileLoc defCtx preParsedLines |> toFullResult fileLoc 
 
-let parse fileLoc defCtx (preParsedLines: (int * UnparsedLine) array) =  
+let parse fileLoc defCtx preParsedLines =  
     let (localTypesWithLines, localFunctionsWithLines) = extractCustomDefinitionsWithLine preParsedLines
 
     let duplicationError arr source symbolName = 
@@ -78,10 +78,10 @@ let extractCustomDefinitionsWithLine preParsedLines =
     
     localTypes, localFunctions
 
-let ToUnparsedLine (i: int) (line: string) : IntermediateClacResult<int * UnparsedLine> =
+let ToUnparsedLine i line =
     line |> ToUnparsedLineInner |> toIntermediateResult i |> map (fun x -> (i, x))
 
-let ToUnparsedLineInner (line: string) : GenericResult<UnparsedLine> =
+let ToUnparsedLineInner line =
     if line.StartsWith "module " then
         line.Substring(7).Trim() |> UnparsedModuleDeclaration |> Ok
     else if line.StartsWith "open " then
@@ -93,7 +93,7 @@ let ToUnparsedLineInner (line: string) : GenericResult<UnparsedLine> =
     else
         line |> ToUnparsedManipulation |> map UnparsedExpression
 
-let ToUnparsedCallableFunction (line: string) : GenericResult<UnparsedCallableFunction> =
+let ToUnparsedCallableFunction line =
     let partsBefore: string array = line |> Parsing.trimSplit [| ' ' |]
 
     if partsBefore.Length < 2 then GenExcError "Assignment missing parts. Missing space?" else
@@ -111,7 +111,7 @@ let ToUnparsedCallableFunction (line: string) : GenericResult<UnparsedCallableFu
     if firstColonI = firstEqualI - 1 then GenExcError "Assignment missing type signature between colon and equals." else
     if parts.Length = firstEqualI + 1 then GenExcError "Assignment missing function body." else
 
-    let nameAndArgs = parts[1..firstColonI-1]
+    let nameAndArgs = parts[..firstColonI-1]
     let name , args = nameAndArgs[0], nameAndArgs[1..]
     if Syntax.nameIsInvalid name then GenExcError ("Invalid function name: " + name) else
 
@@ -132,7 +132,7 @@ let ToUnparsedCallableFunction (line: string) : GenericResult<UnparsedCallableFu
         )
     )
 
-let rec separateFnOptions optionsAcc (parts: string array) =
+let rec separateFnOptions optionsAcc parts =
     if Array.contains parts[0] FunctionData.fnOptions then
         separateFnOptions (parts[0]::optionsAcc) parts.[1..]
     else
@@ -148,7 +148,7 @@ let getFnOptions optionStrings =
         noMemo = isNoMemo
     }
 
-let extractFullSignature rawSignature: GenericResult<NestedItemsArray<string>> =
+let extractFullSignature rawSignature =
     let splitTypes (typeRef: string) =
         if not (typeRef.Contains '*') then Ok [| typeRef |] else 
 
@@ -171,9 +171,9 @@ let extractFullSignature rawSignature: GenericResult<NestedItemsArray<string>> =
     )
 
 // does not support precedence/nesting
-let ToUnparsedManipulation (line: string) = line |> Parsing.parseNestedByBrackets
+let ToUnparsedManipulation line = line |> Parsing.parseNestedByBrackets
 
-let ToUnparsedTypeDefinition (line: string) : GenericResult<UnparsedTypeDefinition> =
+let ToUnparsedTypeDefinition line=
     let parts = line |> Parsing.trimSplit [| ' ' |]
     if parts.Length < 4 then GenExcError "Type definition missing parts. Missing space?" else
 
@@ -186,7 +186,7 @@ let ToUnparsedTypeDefinition (line: string) : GenericResult<UnparsedTypeDefiniti
     extractFullSignature parts[maybeFirstColon.Value+1..]
     |> map (fun signatureParts -> { name = name; unparsedSignature = signatureParts })
 
-let ParseLine loc (definitionContext: DefinitionContext) (line: UnparsedLine) : GenericResult<Line> =
+let ParseLine loc definitionContext line  =
     match line with
     | UnparsedExpression m -> m |> ParseManipulation definitionContext |> map (fun manipulation -> Expression { manip = manipulation; loc = loc })
     | UnparsedAssignment f -> f |> ParseCallableFunction loc definitionContext |> map Assignment
@@ -194,7 +194,7 @@ let ParseLine loc (definitionContext: DefinitionContext) (line: UnparsedLine) : 
     | UnparsedModuleDeclaration m -> parseModuleDeclaration loc m
     | UnparsedModuleReference m -> parseModuleReference loc m
 
-let ParseCallableFunction loc definitionContext (f: UnparsedCallableFunction) : GenericResult<CallableFunction> =
+let ParseCallableFunction loc definitionContext f =
     let maybeSignature = f.unparsedSignature |> NestedItems.toFnType definitionContext 
     let maybeFn = f.fn |> ParseManipulation {definitionContext with functions = Array.append definitionContext.functions f.args}
 
@@ -212,17 +212,17 @@ let ParseCallableFunction loc definitionContext (f: UnparsedCallableFunction) : 
 
 let ParseManipulation definitionContext m = m |> NestedItems.toManipulation definitionContext
 
-let ParseTypeDefinition loc (definitionContext: DefinitionContext) (t: UnparsedTypeDefinition) : GenericResult<TypeDefinition> =
+let ParseTypeDefinition loc definitionContext t  =
     t.unparsedSignature 
     |> NestedItems.toFnType definitionContext
     |> map (fun signature -> { name = t.name; signature = signature; loc=loc })
 
-let stringToType (definitionContext: DefinitionContext) (s: string) : GenericResult<FnType> =
+let stringToType definitionContext s =
     match s with
     | s' when Array.contains s' definitionContext.types -> BaseFnType s' |> Ok |> toGenericResult
     | _ -> GenExcError ("Unknown type: " + s)
 
-let parseModuleDeclaration loc (line: string) : GenericResult<Line> =
+let parseModuleDeclaration loc line =
     match loc.fileLocation with
     | None -> GenExcError "Module declaration outside of file."
     | Some fileLoc -> 
@@ -233,7 +233,7 @@ let parseModuleDeclaration loc (line: string) : GenericResult<Line> =
 
         line |> Files.toQualifiedFileLoc dir |> ModuleDeclaration |> Ok
 
-let parseModuleReference loc (line: string) : GenericResult<Line> =
+let parseModuleReference loc line =
     let dir = getDirOfReference loc.fileLocation
 
     line
@@ -246,7 +246,7 @@ let getDirOfReference fileLoc =
     | Some fileLoc -> System.IO.Path.GetDirectoryName fileLoc
     | None -> Files.packageLocation
 
-let toOrderedFile (lines: Line array) : OrderedFile =
+let toOrderedFile lines =
     // not used for now
     // let moduleDeclaration = lines |> Array.tryHead |> Option.bind (fun x -> match x with | ModuleDeclaration m -> Some m | _ -> None)
     let moduleReferences = lines |> Array.choose (fun x -> match x with | ModuleReference m -> Some m | _ -> None)
@@ -264,7 +264,7 @@ let toOrderedFile (lines: Line array) : OrderedFile =
 
 
 module Parsing =
-    let trimSplit (cs: char array) (s: string) =
+    let trimSplit cs s =
         s.Split cs
         |> Array.map (fun x -> x.Trim())
         |> Array.filter (fun x -> x.Length > 0)
@@ -284,8 +284,8 @@ module Parsing =
         arr
         |> Array.collect (fun (i, x) -> trimSplitSimple cs x |> Array.map (fun y -> i, y))
 
-    let parseNestedByBrackets (s: string) : GenericResult<NestedItemsArray<string>> = 
-        let rec parseNestedByBracketsInner (acc: NestedItemsArray<string>) (splitS: string array) =
+    let parseNestedByBrackets s = 
+        let rec parseNestedByBracketsInner acc (splitS: string array) =
             if splitS.Length = 0 then 
                 acc, splitS
             else if splitS[0] = ")"  then 
@@ -305,7 +305,7 @@ module Parsing =
         |> fst
         |> Ok
 
-    let validateParantheses (s: string) : GenericException option =
+    let validateParantheses s : GenericException option =
         let mutable stack = Stack<char>()
 
         s
@@ -339,7 +339,7 @@ module NestedItems =
             | Error e -> Error e
         | NestedArray a -> a |> Array.map combineResults |> combineResultsToArray |> map NestedArray
 
-    let rec toFnType definitionContext (nestedItems: NestedItemsArray<string>) : GenericResult<FnType array> = 
+    let rec toFnType definitionContext nestedItems = 
         nestedItems
         |> Array.map (fun x -> 
             match x with 
@@ -348,7 +348,7 @@ module NestedItems =
         )
         |> combineClacResultsToArray
 
-    let rec toManipulation definitionCtx (nestedItems: NestedItemsArray<string>) : GenericResult<Manipulation> = 
+    let rec toManipulation definitionCtx nestedItems = 
         nestedItems
         |> Array.map (fun x -> 
             match x with 

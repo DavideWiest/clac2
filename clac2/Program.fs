@@ -17,10 +17,10 @@ let main args =
     args
     |> getInput
     |> FileLoading.loadAndParseFiles stdCtx
-    |> map (fun (program, depMap) -> Reconstruction.reconstructProgram stdCtx program depMap)
+    |> map (fun (program, depMap) -> Normalization.normalizePrograms stdCtx program depMap)
     |> bind (TypeChecking.validateProgramTypes stdCtx)
     |> map (passAndReturn printProgram)
-    |> bind (fun program -> program |> evaluateFile stdCtx |> combineResultsToArray)
+    |> bind (fun program -> program |> evaluateFile stdCtx.definedCtx |> combineResultsToArray)
     |> (fun x ->
         match x with 
         | Ok results ->
@@ -33,3 +33,5 @@ let main args =
     )
     |> resultToReturnCode
 
+// for later
+// let shell = 

@@ -106,6 +106,7 @@ type DefinedCallableFunction = {
     signature: FnType array
     args: string array
     DefinedFn: DefinedFn
+    fnOptions: FnOptions
 }
 
 type DefinedValue =

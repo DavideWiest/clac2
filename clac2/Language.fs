@@ -13,10 +13,11 @@ module Syntax =
         name 
         |> Seq.exists (fun x -> Seq.contains x nameUnallowedChars)
         || isPrimitive name
+        || Array.contains name FunctionData.fnOptions
+        || Array.contains name Types.baseTypes
 
 module Types =
     let baseTypes = [| "int" |]
-
     let intType = BaseFnType "int"
 
 module Files =
@@ -39,18 +40,24 @@ module FunctionData =
 
 module BuiltIn =
     let basicArithmeticArgsAndSignature = [| ("n1", Types.intType); ("n2", Types.intType) |]
+    let basicArithmeticOptions = { fixation = Prefix; noMemo = false }
 
     let arithmeticFuncs = 
         [|
-            ("add", (+))
-            ("subtract", (-))
-            ("mul", (*))
-            ("div", (/))
-            ("pow", (fun x y -> int (float x ** float y)))
+            ("add", Prefix, (+))
+            ("subtract", Prefix, (-))
+            ("mul", Prefix, (*))
+            ("div", Prefix, (/))
+            ("pow", Prefix, pown)
+            ("+", Infix, (+))
+            ("-", Infix, (-))
+            ("*", Infix, (*))
+            ("/", Infix, (/))
+            ("^", Infix, pown)
         |]
-        |> Array.map (fun (k, f) -> k, fun input -> Array.reduce f input)
-        |> Array.map (fun (k, f) -> k, fun input -> Conversion.fnTypeToIntAdapter k f input 2)
-        |> Array.map (Conversion.fSharpFunctionToFn basicArithmeticArgsAndSignature Types.intType)
+        |> Array.map (fun (k, fix, f) -> k, fix, fun input -> Array.reduce f input)
+        |> Array.map (fun (k, fix, f) -> k, fix, fun input -> Conversion.fnTypeToIntAdapter k f input 2)
+        |> Array.map (Conversion.fSharpFunctionToFn basicArithmeticArgsAndSignature Types.intType basicArithmeticOptions)
 
 module StandardContext =
     let buildStandardContext (baseFuncs: DefinedCallableFunction array) (supportedTypes: string array) =
@@ -65,12 +72,14 @@ module StandardContext =
         }
 
 module Conversion = 
-    let fSharpFunctionToFn (typedArgs: (string * FnType) array) (returnType: FnType) (nameAndFn: string * DefinedFn) =
+    let fSharpFunctionToFn (typedArgs: (string * FnType) array) (returnType: FnType) (baseFnOption: FnOptions) (extraData: string * OperatorFixation * DefinedFn) =
+        let name, fixation, f = extraData
         {
-            name = nameAndFn |> fst
+            name = name
             signature = typedArgs |> Array.map snd |> Array.append [| returnType |]
             args = typedArgs |> Array.map fst
-            DefinedFn = nameAndFn |> snd
+            DefinedFn = f
+            fnOptions = { baseFnOption with fixation = fixation }
         }
 
     let rec fnTypeToIntAdapter name (f: int array -> int) (input: DefinedValue array) nArgs : Result<DefinedValue, string> =

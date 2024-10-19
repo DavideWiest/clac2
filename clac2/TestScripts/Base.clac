@@ -50,3 +50,6 @@ let postfix subtractButPostfix a b : int*3 = subtract a b
 1 2 subtractButPostfix
 let postfix postfixWithMoreArgs a b c : int*4 = mul a subtract b c
 4 5 2 postfixWithMoreArgs -- 12
+
+-- fixation in combination with argument propagation
+1 * 2 * 3 * 4 * 5

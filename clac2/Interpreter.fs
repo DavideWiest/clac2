@@ -42,6 +42,8 @@ let PrimitiveOrApply evalCtx args x =
     | DefinedPrimitive p -> DefinedPrimitive p |> Ok
     | DefinedFn (_, fn) -> fn args |> EvalCtx.toFullExcFromEvalCtx evalCtx
 
+// ----
+
 type EvalCtx = {
     customAssignmentMap: Map<string, CallableFunction>
     stdFunctionsMap: Map<string, DefinedCallableFunction>

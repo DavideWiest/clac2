@@ -1,33 +1,14 @@
-module rec Clac2.FrontEnd
+module rec Clac2.FrontEnd.FrontEnd
 
-open Clac2.Domain
-open Clac2.Utilities
-open Clac2.Language
-open Clac2.DomainUtilities
 open FSharp.Core.Result
 open System.Collections.Generic
-
-type UnparsedLine =
-    | UnparsedExpression of NestedItemsArray<string>
-    | UnparsedAssignment of UnparsedCallableFunction
-    | UnparsedTypeDefinition of UnparsedTypeDefinition
-    | UnparsedModuleDeclaration of string
-    | UnparsedModuleReference of string
-
-type UnparsedCallableFunction = {
-    name: string
-    unparsedSignature: NestedItemsArray<string>
-    args: string array
-    fn: NestedItemsArray<string>
-    // for later
-    //innerAssignments: UnparsedCallableFunction array
-    fnOptions: FnOptions
-}
-
-type UnparsedTypeDefinition = {
-    name: string
-    unparsedSignature: NestedItemsArray<string>
-}
+open Clac2.Core.Utils
+open Clac2.Core.Domain
+open Clac2.Core.Exc.Domain
+open Clac2.Core.Exc.Exceptions
+open Clac2.Core.DomainUtils
+open Clac2.Core.Language
+open Clac2.FrontEnd.Domain
 
 let parseFull fileLoc stdCtx input =
     preparse input |> toFullResult fileLoc |> bind (parseFullResult fileLoc stdCtx.defCtx)
@@ -36,7 +17,7 @@ let preparse input =
     input
     |> Parsing.trimSplitSimple [| '\n' |]
     |> Array.mapi (fun i x -> (i, x))
-    |> Array.map (fun (i, x) -> i, upToIfContaints x Language.Syntax.commentIdentifer)
+    |> Array.map (fun (i, x) -> i, upToIfContaints x Syntax.commentIdentifer)
     |> Array.filter (fun x -> not ((snd x).StartsWith Syntax.commentIdentifer))
     |> Parsing.trimSplitIndexedArray [| ';' |]
     |> Array.filter (fun x -> (snd x) <> "")
@@ -346,7 +327,7 @@ module NestedItems =
             | NestedItem i -> i |> stringToType definitionContext
             | NestedArray a -> a |> toFnType definitionContext |> map Function
         )
-        |> combineClacResultsToArray
+        |> combineResultsToArray
 
     let rec toManipulation definitionCtx nestedItems = 
         nestedItems
@@ -359,7 +340,7 @@ module NestedItems =
                     GenExcError ("Unknown function: " + reference)
             | NestedArray a -> a |> toManipulation definitionCtx |> map Manipulation
         )
-        |> combineClacResultsToArray
+        |> combineResultsToArray
 
     let concatLowestLevelItems nestedItems =
         let rec concatLowestLevelItemsInner nestedItems =

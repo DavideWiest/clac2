@@ -1,9 +1,10 @@
-module rec Clac2.Interpreter
+module rec Clac2.Interpreter.Interpreter
 
-open Clac2.Domain
-open Clac2.Utilities
 open FSharp.Core.Result
-open Clac2.DomainUtilities
+open Clac2.Core.Utils
+open Clac2.Core.Domain
+open Clac2.Core.Exc.Exceptions
+open Clac2.Core.Language
 
 let evaluateFile definedCtx program =
     program.mainFile.content.expressions |> Array.map (fun freeManip -> evaluateOne (EvalCtx.init definedCtx program) freeManip.loc freeManip.manip Map.empty)
@@ -31,7 +32,7 @@ let rec substituteOne evalCtx substitutions args x =
     | Manipulation m -> evaluateOne evalCtx (EvalCtx.getCurrentLoc evalCtx) m substitutions |> bind (PrimitiveOrApply evalCtx args)
 
 let toDefinedOrApply evalCtx substitutions f applicationDefined applicationCustom =
-    if Primitive.isPrim f then f |> readPrimitive |> DefinedPrimitive |> Ok
+    if Primitive.isPrim f then f |> Primitive.readPrimitive |> DefinedPrimitive |> Ok
     elif substitutions.ContainsKey f then substitutions[f] |> Ok
     elif evalCtx.stdFunctionsMap.ContainsKey f then applicationDefined evalCtx.stdFunctionsMap[f]
     elif evalCtx.customAssignmentMap.ContainsKey f then applicationCustom evalCtx.customAssignmentMap[f] else
@@ -68,7 +69,7 @@ module EvalCtx =
             locTrace = []
         }
 
-    let toFullExcFromEvalCtx evalCtx (result: Result<'a,string>): FullClacResult<'a> =
+    let toFullExcFromEvalCtx evalCtx result =
         let trace, lastExc = splitToTraceAndLastExc evalCtx
         result |> toGenericResult |> toIntermediateResult lastExc.lineLocation |> toFullResult lastExc.fileLocation |> addLocTraceToResult trace
 

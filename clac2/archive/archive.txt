@@ -64,7 +64,7 @@ middle end:
 
         match x with
         | Fn f -> 
-            if isPrimitive f then Ok (getValidatedPrimitiveType f) else
+            if Primitive.isPrim f then Ok (getValidatedPrimitiveType f) else
             returnSig typeCheckingCtx.signatures[f]
         | Manipulation m ->
             match checkManipulation typeCheckingCtx m line with
@@ -79,7 +79,7 @@ middle end old typesmatch:
                 |> Option.orElse (
                     match arg with
                     | Fn f' ->
-                        if isPrimitive f' then 
+                        if Primitive.isPrim f' then 
                             // check is primitive type matches signaturepart
                         else
                         let argSignature = Signature.retrieve typeCheckingCtx f'
@@ -131,7 +131,7 @@ middle end: checkManipulation first case WITH argument propagation logic
 
         match m[0] with
         | Fn f ->
-            if isPrimitive f then
+            if Primitive.isPrim f then
                 if m.Length > 1 then Some (IntermediateExcFPPure ("Primitive " + f + " used as function.") line) else
 
                 let primitiveType = getValidatedPrimitiveType f
@@ -165,7 +165,7 @@ middle end: checkManipulation first case WITH argument propagation logic
 
 interpreter: eval WITH argument propagation logic, incomplete and/or false
 
-        if isPrimitive f then 
+        if Primitive.isPrim f then 
             if args.Length = 0 then f |> readPrimitive |> DefinedPrimitive |> Ok else EvalCtx.FullExcFromEvalCtx ("Primitive " + f + " used as function (at interpreter).") evalCtx
         else
             if evalCtx.stdFunctionsMap.ContainsKey f then evalCtx.stdFunctionsMap[f].DefinedFn args |> toGenericResult |> EvalCtx.toFullExcFromEvalCtx evalCtx else
@@ -236,7 +236,7 @@ let rec substituteOne evalCtx (substitutions: Map<string, DefinedValue>) x : Ful
     | Fn f -> 
         printfn "substituteOne %s with %A" f substitutions
 
-        if isPrimitive f then f |> readPrimitive |> DefinedPrimitive |> Val |> Ok else
+        if Primitive.isPrim f then f |> readPrimitive |> DefinedPrimitive |> Val |> Ok else
         // substitutions first to override globally defined functions
         if substitutions.ContainsKey f then substitutions[f] |> Val |> Ok else
         // do not pass down defined arguments as substitutions
@@ -253,7 +253,7 @@ let rec eval evalCtx (startFn: Reference) (substitutions: Map<string, DefinedVal
     match startFn with
     | Fn f ->
 
-        if isPrimitive f then f |> readPrimitive |> DefinedPrimitive |> Ok else
+        if Primitive.isPrim f then f |> readPrimitive |> DefinedPrimitive |> Ok else
 
         if substitutions.ContainsKey f then substitutions[f] |> Ok else
         if evalCtx.stdFunctionsMap.ContainsKey f then evalCtx.stdFunctionsMap[f].DefinedFn args |> toGenericResult |> EvalCtx.toFullExcFromEvalCtx evalCtx else
@@ -299,7 +299,7 @@ let rec betaSubstitute evalCtx (substitutions: Map<string, DefinedValue>) x : Fu
     | Fn f -> 
         printfn "findDefinedValue %s with %A" f substitutions
 
-        if isPrimitive f then f |> readPrimitive |> DefinedPrimitive |> Ok
+        if Primitive.isPrim f then f |> readPrimitive |> DefinedPrimitive |> Ok
         elif substitutions.ContainsKey f then substitutions[f] |> Ok 
         elif evalCtx.customAssignmentMap.ContainsKey f then evaluateOne evalCtx evalCtx.customAssignmentMap[f].loc evalCtx.customAssignmentMap[f].manip Map.empty
         elif evalCtx.stdFunctionsMap.ContainsKey f then evalCtx.stdFunctionsMap[f] |> DefinedFn |> Ok else
@@ -323,7 +323,7 @@ type substitutedResult =
 let rec substituteFunctions evalCtx (x: Manipulation) : substitutedResult * Reference array =
     match x[0] with
     | Fn f -> 
-        if isPrimitive f then f |> readPrimitive |> DefinedPrimitive, [||] else
+        if Primitive.isPrim f then f |> readPrimitive |> DefinedPrimitive, [||] else
         if evalCtx.stdFunctionsMap.ContainsKey f then 
             (BuiltInFn evalCtx.stdFunctionsMap[f]), x[1..]
         else
@@ -354,7 +354,6 @@ let refernceToManipulation (x: Reference) =
 
 ---- version 3 types
 
-
 type DefinedValue =
     | DefinedPrimitive of Primitive
     | DefinedFn of CallableFunction
@@ -368,3 +367,23 @@ type BuiltInFn = {
 }
 
 type DefinedManipulation = DefinedValue array -> Result<DefinedValue, string>
+
+----- front end representation: line to string
+
+let lineToString (line: Line) =
+    let exprToString m = m |> Array.map string |> String.concat " "
+
+    match line with
+    | Expression m -> exprToString m.manip
+    | Assignment f -> 
+        let args = (f.args |> String.concat " ")
+        let signature = (f.signature |> Array.map (fun x -> x.ToString()) |> String.concat " ")
+        let fnBody = exprToString f.manip
+
+        sprintf "let %s %s : %s = %s" f.name args signature fnBody
+    | TypeDefinition t -> 
+        let signature = (t.signature |> Array.map (fun x -> x.ToString()) |> String.concat " ")
+
+        sprintf "type %s : %s" t.name signature
+    | ModuleReference m -> sprintf "open %s" m
+    | ModuleDeclaration m -> sprintf "module %s" m

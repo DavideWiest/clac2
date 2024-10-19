@@ -28,25 +28,19 @@ let IntermediateExcFromParts (e: string) (line: int) = e |> GenExc |> Intermedia
 let IntermediateExcFPPure (e: string) (line: int) = e |> GenExc |> IntermediateExc line
 let IntermediateExcFPPureMaybeLine (e: string) maybeLine = e |> GenExc |> IntermediateExcMaybeLine maybeLine
 
-let toIntermediateResult (line: int) (result: GenericResult<'a>) : IntermediateClacResult<'a> =
-    result |> mapError (fun e -> IntermediateExc line e)
-
-let toIntermediateResultWithoutLine (result: GenericResult<'a>) : IntermediateClacResult<'a> = 
-    result |> mapError IntermediateExcWithoutLine
+let toIntermediateResult (line: int) (result: GenericResult<'a>) : IntermediateClacResult<'a> = result |> mapError (fun e -> IntermediateExc line e)
+let toIntermediateResultWithoutLine (result: GenericResult<'a>) : IntermediateClacResult<'a> = result |> mapError IntermediateExcWithoutLine
 
 let tupledToIntermediateResult (result: int * GenericResult<'a>) : IntermediateClacResult<'a> = 
     let (line, err) = result
     toIntermediateResult line err
-
 
 // FullGenericException and FullClacResult
 
 let FullExc (location: string option) (genExcWithLine: IntermediateException) = { genExcWithLine = genExcWithLine; fileLocation = location; locTrace = None }
 let FullExcFromParts (e: string) (line: int) (location: string option) = e |> GenExc |> IntermediateExc line |> FullExc location |> Error
 
-let toFullResult (location: string option) (result: IntermediateClacResult<'a>) : FullClacResult<'a> =
-    result |> mapError (fun e -> FullExc location e)
-
+let toFullResult (location: string option) (result: IntermediateClacResult<'a>) : FullClacResult<'a> = result |> mapError (fun e -> FullExc location e)
 let tupledToFullExc (result: string option * IntermediateClacResult<'a>) : FullClacResult<'a> = 
     let (location, err) = result
     toFullResult location err
@@ -77,20 +71,7 @@ let locPartsToString maybeLine maybeFile relFilePath =
 
 let fileLocOptionToString maybeFileLoc = maybeFileLoc |> Option.defaultValue ("interactive")
 
-
 // Utilities
-
-let combineClacResultsToArray (results: GenericResult<'a> seq) : GenericResult<'a array> =
-    results
-    |> Array.ofSeq
-    |> Array.fold (fun acc r ->
-        match acc with
-        | Ok accList ->
-            match r with
-            | Ok v -> Ok (Array.append accList [| v |])
-            | Error e -> Error e
-        | Error e -> Error e
-    ) (Ok [| |])
 
 let printProgram (program: Program) =
     printfn "%s" "---"
@@ -131,7 +112,7 @@ let readPrimitive (p: string) =
 
     failwith ("Unable to parse primitive: " + p)
 
-let isPrimitive (s: string) = 
+let Primitive.isPrim (s: string) = 
     // ints
     Seq.forall Char.IsDigit s
 

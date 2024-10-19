@@ -1,6 +1,5 @@
-module rec Clac2.Utilities
+module rec Clac2.Core.Utils
 
-open System
 open FSharp.Core.Result
 
 // Misc
@@ -25,7 +24,7 @@ let getValues (m: Map<'a, 'b>) =
 
 let applyUnpacked f (i, x) = f i x
 
-let applyTupleReversed f (x, i) = f (i, x)
+let applyTupledReversed f (x, i) = f (i, x)
 
 // String
 

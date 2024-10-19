@@ -1,8 +1,8 @@
-module rec Clac2.Language
+module rec Clac2.Core.Language
 
-open Clac2.Domain
-open Clac2.Utilities
-open Clac2.DomainUtilities
+open System
+open Clac2.Core.Utils
+open Clac2.Core.Domain
 open FSharp.Core.Result
 
 module Syntax =
@@ -73,6 +73,19 @@ module StandardContext =
             }
         }
 
+module DefCtx =
+    let getDefCtxWithStdCtxFromMap stdCtx (depMap: depMap) fileLoc =
+        mergeDefCtx stdCtx.defCtx depMap[fileLoc]
+    
+    let mergeDefCtxFromStdCtx stdCtx defCtx =
+        mergeDefCtx stdCtx.defCtx defCtx
+
+    let mergeDefCtx defCtx1 defCtx2 =
+        {
+            types = Array.append defCtx1.types defCtx2.types
+            functions = Array.append defCtx1.functions defCtx2.functions
+        }
+
 module Conversion = 
     let fSharpFunctionToFn (typedArgs: (string * FnType) array) (returnType: FnType) (baseFnOption: FnOptions) (extraData: string * OperatorFixation * DefinedFn) =
         let name, fixation, f = extraData
@@ -91,7 +104,35 @@ module Conversion =
             Ok (DefinedFn (name + sprintf " with %i/%i args curried" input.Length nArgs, fun args -> fnTypeToIntAdapter name f (Array.append input args) nArgs))
         else
 
-        let maybeDefinedInput = input |> Array.map (definedValueToInt) |> combineResultsToArray
+        let maybeDefinedInput = input |> Array.map (Primitive.definedValueToInt) |> combineResultsToArray
 
         maybeDefinedInput
         |> bind (f >> PrimitiveInt >> DefinedPrimitive >> Ok)
+
+module Primitive = 
+    let definedValueToInt v = definedValueToIntInner v 0
+
+    let rec definedValueToIntInner v (recursionCount: int) =
+        // prevent infinite recursion while allowing users to pass nested functions
+        if recursionCount > 10 then Error (sprintf "Recursion limit reached while trying to convert argument to int for: %A" v) else
+
+        match v with
+            | DefinedPrimitive (PrimitiveInt i) -> Ok i
+            | DefinedFn (name, fn) ->
+                match fn [| |] with
+                | Ok(v) -> definedValueToIntInner v (recursionCount + 1)
+                | Error e -> Error e
+
+    let readPrimitive (p: string) =
+        // ints
+        if Seq.forall Char.IsDigit p then p |> int |> PrimitiveInt else
+
+        failwith ("Internal Error: Unable to parse primitive: " + p)
+
+    let isPrim (s: string) = 
+        // ints
+        Seq.forall Char.IsDigit s
+
+    let getValidatedPrimitiveType primitiveStr =
+        match readPrimitive primitiveStr with
+            | PrimitiveInt p -> BaseFnType "int"

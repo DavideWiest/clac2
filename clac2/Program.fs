@@ -1,11 +1,14 @@
 ﻿
-open Clac2.Utilities
-open Clac2.DomainUtilities
-open Clac2.Modularization
-open Clac2.Interpreter
 open FSharp.Core.Result
-open Clac2.Language
-open Clac2.MiddleEnd
+open Clac2.Core.Utils
+open Clac2.Core.Representation
+open Clac2.Core.Edge
+open Clac2.Core.Language
+open Clac2.Core.ProgramUtils
+open Clac2.MiddleEnd.Normalization
+open Clac2.MiddleEnd.TypeChecker
+open Clac2.Interpreter.Interpreter
+open Clac2.Modularization
 
 // stdCtx for front/middle end and back end should be 2 different types
 
@@ -16,9 +19,9 @@ let main args =
 
     args
     |> getInput
-    |> FileLoading.loadAndParseFiles stdCtx
-    |> map (fun (program, depMap) -> Normalization.normalizePrograms stdCtx program depMap)
-    |> bind (TypeChecking.validateProgramTypes stdCtx)
+    |> loadAndParseFiles stdCtx
+    |> map (fun (program, depMap) -> applyNormalizationPipeline stdCtx program, depMap)
+    |> bind (validateProgramTypes stdCtx)
     |> map (passAndReturn printProgram)
     |> bind (fun program -> program |> evaluateFile stdCtx.definedCtx |> combineResultsToArray)
     |> (fun x ->
@@ -32,6 +35,3 @@ let main args =
         x
     )
     |> resultToReturnCode
-
-// for later
-// let shell = 

@@ -1,4 +1,4 @@
-module rec Clac2.Domain
+module rec Clac2.Core.Domain
 
 // Files
 
@@ -21,15 +21,9 @@ type MainFile = {
     content: OrderedFile
 }
 
-// Program
+type depMap = Map<string option, DefinitionContext>
 
-// wrapper, for frontend and utils
-type Line =
-    | ModuleReference of string 
-    | ModuleDeclaration of string 
-    | Expression of FreeManipulation // will be sent to stdout
-    | Assignment of CallableFunction
-    | TypeDefinition of TypeDefinition
+// Program
 
 type OrderedFile = {
     // moduleDeclaration: string option
@@ -93,12 +87,6 @@ type Primitive =
     // | PrimitiveFloat of float
     // | Bool
 
-type NestedItems<'a> =
-    | NestedItem of 'a
-    | NestedArray of NestedItems<'a> array
-
-type NestedItemsArray<'a> = NestedItems<'a> array
-
 // Defined
 
 type DefinedCallableFunction = {
@@ -131,25 +119,3 @@ type DefinedContext = {
     functions: DefinedCallableFunction array
 }
 
-// Errors 
-
-type GenericException = {
-    message: string
-}
-
-type GenericResult<'a> = Result<'a, GenericException>
-
-type IntermediateException = {
-    genExc: GenericException
-    line: int option
-}
-
-type IntermediateClacResult<'a> = Result<'a, IntermediateException>
-
-type FullGenericException = {
-    genExcWithLine: IntermediateException
-    fileLocation: string option
-    locTrace: ProgramLocation list option
-}
-
-type FullClacResult<'a> = Result<'a, FullGenericException>

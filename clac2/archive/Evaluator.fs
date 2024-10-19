@@ -21,7 +21,7 @@ let evaluateOne evalCtx loc manipulation  =
 let rec substituteOne evalCtx (substitutions: Map<string, DefinedValue>) x : FullClacResult<DefinedValue> =
     match x with
     | Fn f -> 
-        if isPrimitive f then f |> readPrimitive |> DefinedPrimitive |> Ok else
+        if Primitive.isPrim f then f |> readPrimitive |> DefinedPrimitive |> Ok else
 
         // substitutions first to override globally defined functions
         if substitutions.ContainsKey f then substitutions[f] |> Ok else
@@ -46,7 +46,7 @@ let rec eval evalCtx (startFn: Reference) (args: DefinedValue array) : FullClacR
     match startFn with
     | Fn f -> 
 
-        if isPrimitive f then 
+        if Primitive.isPrim f then 
             if args.Length = 0 then f |> readPrimitive |> DefinedPrimitive |> Ok else FullExcFromEvalCtx ("Primitive" + f + "used as function.") evalCtx
         else
 

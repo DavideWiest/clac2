@@ -43,3 +43,6 @@ let locPartsToString maybeLine maybeFile relFilePath =
     fileSubStr, lineSubStr, fileLink
 
 let fileLocOptionToString maybeFileLoc = maybeFileLoc |> Option.defaultValue ("interactive")
+
+let printResult v = 
+    printfn "%A" v

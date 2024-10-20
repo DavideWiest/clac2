@@ -4,7 +4,7 @@ open FSharp.Core.Result
 open Clac2.Core.Utils
 open Clac2.Core.Domain
 open Clac2.Interpreter.EvalCtx
-open Clac2.Core.Language
+open Clac2.Core.Lang.Primitive
 
 let evaluateFile definedCtx program =
     program.mainFile.content.expressions |> Array.map (fun freeManip -> evaluateOne (EvalCtx.init definedCtx program) freeManip.loc freeManip.manip Map.empty)
@@ -32,10 +32,11 @@ let rec substituteOne evalCtx substitutions args x =
     | Manipulation m -> evaluateOne evalCtx (EvalCtx.getCurrentLoc evalCtx) m substitutions |> bind (PrimitiveOrApply evalCtx args)
 
 let toDefinedOrApply evalCtx substitutions f applicationDefined applicationCustom =
-    if Primitive.isPrim f then f |> Primitive.readPrimitive |> DefinedPrimitive |> Ok
+    let maybePrim = Primitive.read f
+    if maybePrim.IsSome then maybePrim.Value |> DefinedPrimitive |> Ok
     elif substitutions.ContainsKey f then substitutions[f] |> Ok
-    elif evalCtx.stdFunctionsMap.ContainsKey f then evalCtx.stdFunctionsMap[f] |> DefinedFn |> applicationDefined
-    elif evalCtx.customAssignmentMap.ContainsKey f then applicationCustom evalCtx.customAssignmentMap[f] else
+    elif evalCtx.stdFunctionsMap.ContainsKey f then evalCtx.stdFunctionsMap[f] |> applicationDefined
+    elif evalCtx.customAssignmentMap.ContainsKey f then evalCtx.customAssignmentMap[f] |> applicationCustom else
     EvalCtx.FullExcFromEvalCtx ("Function not found (at evaluation): " + f) evalCtx
 
 let PrimitiveOrApply evalCtx args x =

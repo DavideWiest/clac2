@@ -4,28 +4,30 @@ open FSharp.Core.Result
 open Clac2.Core.Utils
 open Clac2.Core.Domain
 open Clac2.Core.Exc.Domain
+open Clac2.Core.Context
 open Clac2.Core.Exc.Exceptions
-open Clac2.Core.Language
+open Clac2.Core.Lang.Primitive
 open Clac2.MiddleEnd.TypeCheckingCtx
 open Clac2.MiddleEnd.MiddleEndUtils
 
-let validateProgramTypes stdCtx (programAndDepMap: Program * fileDependencyMap) : FullResult<Program> =
-        let (program, depMap) = programAndDepMap
+let validateProgramTypes definitionCtx definedCtx (programAndDepMap: Program * fileDependencyMap) : FullResult<Program> =
+    let (program, _) = programAndDepMap
+    let stdCtx = StdCtx.init  definedCtx definitionCtx
 
-        let validateFileArray (fileArr: File array) =
-            fileArr
-            |> Array.map (fun file -> file.location, file.content)
-            |> Array.map (fun (loc, orderedFile) -> 
-                Some loc, orderedFile |> validateTypes stdCtx program false
-            )
-            |> Array.map Full.tupledToExc
-            |> Result.combineToArray
+    let validateFileArray (fileArr: File array) =
+        fileArr
+        |> Array.map (fun file -> file.location, file.content)
+        |> Array.map (fun (loc, orderedFile) -> 
+            Some loc, orderedFile |> validateTypes stdCtx program false
+        )
+        |> Array.map Full.tupledToExc
+        |> Result.combineToArray
 
-        program.mainFile.content
-        |> (validateTypes stdCtx program true)
-        |> Full.toResult program.mainFile.maybeLocation
-        |> bind (fun _ -> validateFileArray program.secondaryFiles)
-        |> map (fun _ -> program)
+    program.mainFile.content
+    |> (validateTypes stdCtx program true)
+    |> Full.toResult program.mainFile.maybeLocation
+    |> bind (fun _ -> validateFileArray program.secondaryFiles)
+    |> map (fun _ -> program)
     
 let validateTypes stdCtx program isMainFile file =
     match validateTypesInner stdCtx program isMainFile file with
@@ -41,9 +43,8 @@ let validateTypesInner stdCtx program isMainFile file =
     |> Option.orElse (checkManipulationsAnyOutputType typeCheckingCtx file.expressions)
     |> Option.orElse (checkAssignments typeCheckingCtx file.assignments) 
 
-// not necessary to check all types, only custom ones (will run for each file)
+
 let checkTypeDefinitions (stdCtx: StandardContext) typeCheckingCtx customTypes =    
-    // no recursive type definitions - type system is a tree
     let rec checkTypeDefsInner typesHigherUp (x: TypeDefinition) =
         let rec flattenSignature (x: FnType) =
             match x with
@@ -96,16 +97,16 @@ let rec checkManipulation typeCheckingCtx m line expectedOutputType =
         ) None (Array.zip inputSignature args)
 
     if m.Length = 0 then 
-        // supports "()"/unit this way
         if expectedOutputType = AnyOut then None else Some (Intermediate.ExcFPPure ("Got empty manipulation when expecting output type of: " + expectedOutputType.ToString()) line)
     else
 
     match m[0] with
     | Fn f ->
-        if Primitive.isPrim f then
+        let maybePrim = Primitive.read f
+        if maybePrim.IsSome then
             if m.Length > 1 then Some (Intermediate.ExcFPPure ("Primitive " + f + " used as function.") line) else
 
-            let primitiveType = Primitive.getValidatedPrimitiveType f
+            let primitiveType = Primitive.typeOfPrimitive maybePrim.Value
             if expectedOutputType <> AnyOut && expectedOutputType <> ExpectedType primitiveType then Some (Intermediate.ExcFPPure (sprintf "Expected output type for %s is %A, received %A" f expectedOutputType primitiveType) line) else None
         else
 

@@ -1,15 +1,16 @@
 module rec Clac2.MiddleEnd.MiddleEndUtils
 
 open Clac2.Core.Domain
+open Clac2.Core.Context
 open Clac2.Core.Utils
 open Clac2.MiddleEnd.MiddleEndUtils
 
-let generateFunctionSignatureMap stdCtx program (mainFile: OrderedFile Option) =
+let generateFunctionSignatureMap definedCtx program (mainFile: OrderedFile Option) =
     let typesInFile = if mainFile.IsNone then [||] else mainFile.Value.assignments |> Array.map (fun x -> x.name, x.signature)
     [
         typesInFile
         program.secondaryFiles |> Array.map (fun f -> f.content.assignments |> Array.map (fun x -> x.name, x.signature)) |> Array.concat
-        stdCtx.definedCtx.functions |> Array.map (fun x -> x.name, x.signature)
+        definedCtx.functions |> Array.map (fun x -> x.name, x.signature)
     ]
     |> Array.concat
     |> Map.ofArray
@@ -21,13 +22,13 @@ module Signature =
         let argumentsAsAssignments = 
             assignment.args 
             |> Array.mapi (fun i x -> 
-                (x, Signature.UnpackInnerSignature assignment.signature[i] )
+                (x, Signature.UnpackInner assignment.signature[i] )
             )
             |> Map.ofArray
 
         Map.merge argumentsAsAssignments signatureMap
 
-    let UnpackInnerSignature signature =
+    let UnpackInner signature =
         match signature with
         | BaseFnType s -> [| BaseFnType s |]
         | Function fs -> fs

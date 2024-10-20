@@ -1,17 +1,15 @@
 module rec Clac2.FrontEnd.FrontEnd
 
 open FSharp.Core.Result
-open System.Collections.Generic
 open Clac2.Core.Utils
 open Clac2.Core.Domain
-open Clac2.Core.Exc.Domain
+open Clac2.Core.Context
 open Clac2.Core.Exc.Exceptions
 open Clac2.Core.DomainUtils
-open Clac2.Core.Language
+open Clac2.Core.Lang.Language
 open Clac2.FrontEnd.Domain
-
-let parseFull fileLoc stdCtx input =
-    preparse input |> Full.toResult fileLoc |> bind (parseFullResult fileLoc stdCtx.defCtx)
+open Clac2.FrontEnd.NestedItems
+open Clac2.FrontEnd.Parsing
 
 let preparse input =
     input
@@ -26,7 +24,7 @@ let preparse input =
 
 let parseFullResult fileLoc defCtx preParsedLines = parse fileLoc defCtx preParsedLines |> Full.toResult fileLoc 
 
-let parse fileLoc defCtx preParsedLines =  
+let parse fileLoc (defCtx: DefinitionContext) preParsedLines =  
     let (localTypesWithLines, localFunctionsWithLines) = extractCustomDefinitionsWithLine preParsedLines
 
     let duplicationError arr source symbolName = 
@@ -64,9 +62,9 @@ let ToUnparsedLine i line =
 
 let ToUnparsedLineInner line =
     if line.StartsWith "module " then
-        line.Substring(7).Trim() |> UnparsedModuleDeclaration |> Ok
+        line.Substring(7) |> UnparsedModuleDeclaration |> Ok
     else if line.StartsWith "open " then
-        line.Substring(5).Trim() |> UnparsedModuleReference |> Ok
+        line.Substring(5) |> UnparsedModuleReference |> Ok
     else if line.StartsWith "let " then
         line |> ToUnparsedCallableFunction |> map UnparsedAssignment
     else if line.StartsWith "type " then
@@ -97,7 +95,7 @@ let ToUnparsedCallableFunction line =
     if Syntax.nameIsInvalid name then Simple.toExcResult ("Invalid function name: " + name) else
 
     extractFullSignature parts[firstColonI+1..firstEqualI-1]
-    |> bind (fun (signatureParts: NestedItemsArray<string>) ->        
+    |> bind (fun (signatureParts: NestedItemArray<string>) ->        
         if (signatureParts.Length) - 1 <> (args |> Array.length) then Simple.toExcResult (sprintf "Expected %i arguments, got %i. Signature: %A" (signatureParts.Length - 1) (args |> Array.length) signatureParts ) else
         if args |> Array.map Syntax.nameIsInvalid |> Array.exists id then Simple.toExcResult "Invalid argument name." else
 
@@ -114,7 +112,7 @@ let ToUnparsedCallableFunction line =
     )
 
 let rec separateFnOptions optionsAcc parts =
-    if Array.contains parts[0] FunctionData.fnOptions then
+    if Array.contains parts[0] FuncData.fnOptions then
         separateFnOptions (parts[0]::optionsAcc) parts.[1..]
     else
         optionsAcc, parts
@@ -146,7 +144,7 @@ let extractFullSignature rawSignature =
     |> bind (fun x ->
         x
         |> Array.map (NestedItems.applyToInnerItems splitTypes)
-        |> Array.map (NestedItems.combineResults)
+        |> Array.map (NestedItems.combineNestedItemResults)
         |> Result.combineToArray
         |> map NestedItems.concatLowestLevelItems
     )
@@ -154,8 +152,8 @@ let extractFullSignature rawSignature =
 // does not support precedence/nesting
 let ToUnparsedManipulation line = line |> Parsing.parseNestedByBrackets
 
-let ToUnparsedTypeDefinition line=
-    let parts = line |> Parsing.trimSplit [| ' ' |]
+let ToUnparsedTypeDefinition line =
+    let parts = line |> trimSplit [| ' ' |]
     if parts.Length < 4 then Simple.toExcResult "Type definition missing parts. Missing space?" else
 
     let maybeFirstColon = parts |> Array.tryFindIndex (fun x -> x = ":")
@@ -167,7 +165,7 @@ let ToUnparsedTypeDefinition line=
     extractFullSignature parts[maybeFirstColon.Value+1..]
     |> map (fun signatureParts -> { name = name; unparsedSignature = signatureParts })
 
-let ParseLine loc definitionContext line  =
+let ParseLine loc (definitionContext: DefinitionContext) line  =
     match line with
     | UnparsedExpression m -> m |> ParseManipulation definitionContext |> map (fun manipulation -> Expression { manip = manipulation; loc = loc })
     | UnparsedAssignment f -> f |> ParseCallableFunction loc definitionContext |> map Assignment
@@ -191,17 +189,13 @@ let ParseCallableFunction loc definitionContext f =
         } |> Ok
     )
 
-let ParseManipulation definitionContext m = m |> NestedItems.toManipulation definitionContext
+let ParseManipulation (definitionContext: DefinitionContext) m = m |> NestedItems.toManipulation definitionContext
 
 let ParseTypeDefinition loc definitionContext t  =
     t.unparsedSignature 
     |> NestedItems.toFnType definitionContext
     |> map (fun signature -> { name = t.name; signature = signature; loc=loc })
 
-let stringToType definitionContext s =
-    match s with
-    | s' when Array.contains s' definitionContext.types -> BaseFnType s' |> Ok |> Simple.toResult
-    | _ -> Simple.toExcResult ("Unknown type: " + s)
 
 let parseModuleDeclaration loc line =
     match loc.fileLocation with
@@ -242,116 +236,3 @@ let toOrderedFile lines =
         assignments = assignments
         typeDefinitions = typeDefinitions
     }
-
-
-module Parsing =
-    let trimSplit cs s =
-        s.Split cs
-        |> Array.map (fun x -> x.Trim())
-        |> Array.filter (fun x -> x.Length > 0)
-        |> Array.collect (fun x ->
-            if x.Length = 1 then [| x |] else
-
-            if Array.contains x[0] (Syntax.specialChars.ToCharArray()) then [| x[0].ToString(); x.Substring(1) |] else
-            if Array.contains x.[x.Length-1] (Syntax.specialChars.ToCharArray()) then [| x.Substring(0, x.Length-1); x[x.Length-1].ToString() |] else
-            [| x |]
-        )
-
-    let trimSplitSimple (cs: char array) (s: string) =
-        s.Split cs
-        |> Array.map (fun x -> x.Trim())
-
-    let trimSplitIndexedArray (cs: char array) (arr: (int * string) array) =
-        arr
-        |> Array.collect (fun (i, x) -> trimSplitSimple cs x |> Array.map (fun y -> i, y))
-
-    let parseNestedByBrackets s = 
-        let rec parseNestedByBracketsInner acc (splitS: string array) =
-            if splitS.Length = 0 then 
-                acc, splitS
-            else if splitS[0] = ")"  then 
-                acc, splitS[1..] // dont pass on the closing bracket
-            else if splitS[0] = "(" then 
-                let (innerAcc, rest) = parseNestedByBracketsInner [||] splitS[1..]
-                parseNestedByBracketsInner (Array.append acc [|NestedArray innerAcc|]) rest
-            else
-                parseNestedByBracketsInner (Array.append acc [|NestedItem splitS[0]|]) splitS[1..]
-
-        let maybeParanError = validateParantheses s
-        if maybeParanError.IsSome then Error maybeParanError.Value else
-
-        s 
-        |> trimSplit [| ' ' |]
-        |> parseNestedByBracketsInner [||]
-        |> fst
-        |> Ok
-
-    let validateParantheses s : SimpleExc option =
-        let mutable stack = Stack<char>()
-
-        s
-        |> Seq.fold (fun (maybeExc: SimpleExc option) c ->
-            if maybeExc.IsSome then maybeExc else
-            if stack.Count = 0 && c = ')' then Some(Simple.Exc (sprintf "Too many closing parantheses: %c" c)) 
-            else
-
-                if c = '(' then stack.Push c
-                else if c = ')' then stack.Pop() |> ignore
-
-                None
-        ) None
-        |> Option.orElse (if stack.Count = 0 then None else Some(Simple.Exc (sprintf "Unclosed parantheses: %A" stack)))
-
-module NestedItems =
-
-    let applyToItems f nestedItems  = nestedItems |> Array.map (fun x -> applyToInnerItems f x)
-
-    let rec applyToInnerItems f nestedItems = 
-        match nestedItems with 
-        | NestedItem i -> f i |> NestedItem
-        | NestedArray a -> a |> Array.map (applyToInnerItems f) |> NestedArray
-
-    let rec combineResults nestedItems = 
-        match nestedItems with
-        // change this - it cant be right
-        | NestedItem i ->
-            match i with
-            | Ok x -> x |> NestedItem |> Ok
-            | Error e -> Error e
-        | NestedArray a -> a |> Array.map combineResults |> Result.combineToArray |> map NestedArray
-
-    let rec toFnType definitionContext nestedItems = 
-        nestedItems
-        |> Array.map (fun x -> 
-            match x with 
-            | NestedItem i -> i |> stringToType definitionContext
-            | NestedArray a -> a |> toFnType definitionContext |> map Function
-        )
-        |> Result.combineToArray
-
-    let rec toManipulation definitionCtx nestedItems = 
-        nestedItems
-        |> Array.map (fun x -> 
-            match x with 
-            | NestedItem reference ->
-                if Array.contains reference definitionCtx.functions || Primitive.isPrim reference then
-                    reference |> Fn |> Ok |> Simple.toResult
-                else
-                    Simple.toExcResult ("Unknown function: " + reference)
-            | NestedArray a -> a |> toManipulation definitionCtx |> map Manipulation
-        )
-        |> Result.combineToArray
-
-    let concatLowestLevelItems nestedItems =
-        let rec concatLowestLevelItemsInner nestedItems =
-            nestedItems
-            |> Array.collect (fun nestedItems ->
-                match nestedItems with
-                | NestedItem iArr -> iArr |> Array.map NestedItem
-                | NestedArray innerArray ->
-                    let processedInnerArray = innerArray |> concatLowestLevelItemsInner |> NestedArray
-                    [| processedInnerArray |]
-            )
-
-        nestedItems 
-        |> concatLowestLevelItemsInner

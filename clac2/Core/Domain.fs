@@ -21,8 +21,6 @@ type MainFile = {
     content: OrderedFile
 }
 
-type fileDependencyMap = Map<string option, DefinitionContext>
-
 // Program
 
 type OrderedFile = {
@@ -82,10 +80,14 @@ type FnType =
     | Function of FnType array
 
 type Primitive =
-    | PrimitiveInt of int
-    // for later
-    // | PrimitiveFloat of float
-    // | Bool
+    | PInt of int
+    | PFloat of float
+    // | PBool of bool
+
+type PrimitiveOptions = 
+    | PoInt
+    | FLoat of float
+    // | Bool of bool
 
 // Defined
 
@@ -102,20 +104,4 @@ type DefinedValue =
     | DefinedFn of string * DefinedFn
 
 type DefinedFn = DefinedValue array -> Result<DefinedValue, string>
-
-// Context
-
-type StandardContext = {
-    defCtx: DefinitionContext
-    definedCtx: DefinedContext
-}
-
-type DefinitionContext = {
-    types: string array
-    functions: string array
-}
-
-type DefinedContext = {
-    functions: DefinedCallableFunction array
-}
 

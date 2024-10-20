@@ -37,8 +37,6 @@ module Files =
         |> fun reference -> System.IO.Path.Combine(dir, reference + if Array.exists (fun (ending: string) -> reference.EndsWith(ending)) officialExtensions then "" else "." + officialExtensions[0]) 
         |> System.IO.Path.GetFullPath
 
-module FunctionData =
-    let fnOptions = [| "infix"; "postfix"; "noMemo"|]
 
 module BuiltIn =
     let basicArithmeticArgsAndSignature = [| ("n1", Types.intType); ("n2", Types.intType) |]

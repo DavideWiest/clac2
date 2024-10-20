@@ -1,11 +1,12 @@
 module rec Clac2.Interpreter.EvalCtx
 
 open Clac2.Core.Domain
+open Clac2.Core.Context
 open Clac2.Core.Exc.Exceptions
 
 type EvalCtx = {
     customAssignmentMap: Map<string, CallableFunction>
-    stdFunctionsMap: Map<string, string * DefinedFn>
+    stdFunctionsMap: Map<string, DefinedValue>
     locTrace: ProgramLocation list
 }
 
@@ -22,7 +23,7 @@ module EvalCtx =
                 |> Map.ofArray
             stdFunctionsMap = 
                 definedCtx.functions
-                |> Array.map (fun x -> x.name, (x.name, x.DefinedFn))
+                |> Array.map (fun x -> x.name, (x.name, x.DefinedFn) |> DefinedFn)
                 |> Map.ofArray
             locTrace = []
         }

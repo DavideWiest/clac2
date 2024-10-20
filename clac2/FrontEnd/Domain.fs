@@ -1,9 +1,10 @@
 module rec Clac2.FrontEnd.Domain
 
 open Clac2.Core.Domain
+open Clac2.FrontEnd.NestedItems
 
 type UnparsedLine =
-    | UnparsedExpression of NestedItemsArray<string>
+    | UnparsedExpression of NestedItemArray<string>
     | UnparsedAssignment of UnparsedCallableFunction
     | UnparsedTypeDefinition of UnparsedTypeDefinition
     | UnparsedModuleDeclaration of string
@@ -18,9 +19,9 @@ type Line =
 
 type UnparsedCallableFunction = {
     name: string
-    unparsedSignature: NestedItemsArray<string>
+    unparsedSignature: NestedItemArray<string>
     args: string array
-    fn: NestedItemsArray<string>
+    fn: NestedItemArray<string>
     fnOptions: FnOptions
     // for later
     //innerAssignments: UnparsedCallableFunction array
@@ -28,11 +29,5 @@ type UnparsedCallableFunction = {
 
 type UnparsedTypeDefinition = {
     name: string
-    unparsedSignature: NestedItemsArray<string>
+    unparsedSignature: NestedItemArray<string>
 }
-
-type NestedItemsArray<'a> = NestedItems<'a> array
-
-type NestedItems<'a> =
-    | NestedItem of 'a
-    | NestedArray of NestedItems<'a> array

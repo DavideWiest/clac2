@@ -28,13 +28,11 @@ module EvalCtx =
         }
 
     let toFullExcFromEvalCtx evalCtx result =
-        let trace, lastExc = splitToTraceAndLastExc evalCtx
-        result |> toGenericResult |> toIntermediateResult lastExc.lineLocation |> toFullResult lastExc.fileLocation |> addLocTraceToResult trace
+        let lastExc = evalCtx.locTrace[0]
+        result |> Simple.toResult |> Intermediate.toResult lastExc.lineLocation |> Full.toResult lastExc.fileLocation |> Full.addLocTraceToResult evalCtx.locTrace
 
     let FullExcFromEvalCtx e evalCtx = 
-        let _, lastExc = splitToTraceAndLastExc evalCtx
-        e |> SimpleExc |> IntermediateExc (lastExc.lineLocation) |> FullExc lastExc.fileLocation |> addLocTraceToExc evalCtx.locTrace |> Error
-
-    let splitToTraceAndLastExc evalCtx = evalCtx.locTrace[1..], evalCtx.locTrace[0]
+        let lastExc = evalCtx.locTrace[0]
+        e |> Simple.Exc |> Intermediate.Exc (lastExc.lineLocation) |> Full.Exc lastExc.fileLocation |> Full.addLocTraceToExc evalCtx.locTrace |> Error
 
     let getCurrentLoc evalCtx = evalCtx.locTrace[0]

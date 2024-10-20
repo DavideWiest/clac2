@@ -21,15 +21,15 @@ let toGenericResult (result: Result<'a, string>) : GenericResult<'a> =
 
 // IntermediateGenericException and IntermediateClacResult
 
-let IntermediateExc (line: int) (e: GenericException) = { genExc = e; line = Some line }
-let IntermediateExcWithoutLine (e: GenericException) = { genExc = e; line = None}
-let IntermediateExcMaybeLine maybeLine (e: GenericException) = { genExc = e; line = maybeLine }
-let IntermediateExcFromParts (e: string) (line: int) = e |> GenExc |> IntermediateExc line
-let IntermediateExcFPPure (e: string) (line: int) = e |> GenExc |> IntermediateExc line
-let IntermediateExcFPPureMaybeLine (e: string) maybeLine = e |> GenExc |> IntermediateExcMaybeLine maybeLine
+let Intermediate.Exc (line: int) (e: GenericException) = { genExc = e; line = Some line }
+let Intermediate.ExcWithoutLine (e: GenericException) = { genExc = e; line = None}
+let Intermediate.ExcMaybeLine maybeLine (e: GenericException) = { genExc = e; line = maybeLine }
+let Intermediate.ExcFromParts (e: string) (line: int) = e |> GenExc |> Intermediate.Exc line
+let Intermediate.ExcFPPure (e: string) (line: int) = e |> GenExc |> Intermediate.Exc line
+let Intermediate.ExcFPPureMaybeLine (e: string) maybeLine = e |> GenExc |> Intermediate.ExcMaybeLine maybeLine
 
-let toIntermediateResult (line: int) (result: GenericResult<'a>) : IntermediateClacResult<'a> = result |> mapError (fun e -> IntermediateExc line e)
-let toIntermediateResultWithoutLine (result: GenericResult<'a>) : IntermediateClacResult<'a> = result |> mapError IntermediateExcWithoutLine
+let toIntermediateResult (line: int) (result: GenericResult<'a>) : IntermediateClacResult<'a> = result |> mapError (fun e -> Intermediate.Exc line e)
+let toIntermediateResultWithoutLine (result: GenericResult<'a>) : IntermediateClacResult<'a> = result |> mapError Intermediate.ExcWithoutLine
 
 let tupledToIntermediateResult (result: int * GenericResult<'a>) : IntermediateClacResult<'a> = 
     let (line, err) = result
@@ -37,8 +37,8 @@ let tupledToIntermediateResult (result: int * GenericResult<'a>) : IntermediateC
 
 // FullGenericException and FullClacResult
 
-let FullExc (location: string option) (genExcWithLine: IntermediateException) = { genExcWithLine = genExcWithLine; fileLocation = location; locTrace = None }
-let FullExcFromParts (e: string) (line: int) (location: string option) = e |> GenExc |> IntermediateExc line |> FullExc location |> Error
+let FullExc (location: string option) (genExcWithLine: Intermediate.Exception) = { genExcWithLine = genExcWithLine; fileLocation = location; locTrace = None }
+let FullExcFromParts (e: string) (line: int) (location: string option) = e |> GenExc |> Intermediate.Exc line |> FullExc location |> Error
 
 let toFullResult (location: string option) (result: IntermediateClacResult<'a>) : FullClacResult<'a> = result |> mapError (fun e -> FullExc location e)
 let tupledToFullExc (result: string option * IntermediateClacResult<'a>) : FullClacResult<'a> = 

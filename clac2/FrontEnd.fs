@@ -51,7 +51,7 @@ let parse fileLoc defCtx preParsedLines =
     let duplicationError arr source symbolName = 
         let maybeDup = chooseHigherOccurenceElements 1 arr source |> Array.tryHead
         match maybeDup with
-        | Some (dupLine, dupName) -> IntermediateExcFromParts ("Duplicate " + symbolName + " definition for: " + dupName) dupLine |> Some
+        | Some (dupLine, dupName) -> Intermediate.ExcFromParts ("Duplicate " + symbolName + " definition for: " + dupName) dupLine |> Some
         | None -> None
 
     let dupFnResult = duplicationError localFunctionsWithLines defCtx.functions "function"

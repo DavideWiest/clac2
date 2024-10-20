@@ -5,7 +5,7 @@ open Clac2.Core.Utils
 open Clac2.Core.Domain
 open Clac2.Core.Exc.Domain
 open Clac2.Core.Exc.Exceptions
-open Clac2.Core.Edge
+open Clac2.Core.Input
 open Clac2.Core.Representation
 open Clac2.Core.Language
 open Clac2.FrontEnd.Domain
@@ -13,15 +13,15 @@ open Clac2.FrontEnd.FrontEnd
 
 type fileContentsMemo = Map<string option, (int * UnparsedLine) array>
 
-let loadAndParseFiles (stdCtx: StandardContext) (unparsedMainFile: MainFileUnparsed) : FullResult<Program * fileDependencyMap> =
+let loadAndParseFiles stdCtx unparsedMainFile =
     match unparsedMainFile with
     | Interactive s -> loadAllFilesInner stdCtx None s
-    | File f -> f |> tryReadFileIntermedExc |> toFullResult (Some f) |> bind (loadAllFilesInner stdCtx (Some f))
+    | File f -> f |> tryReadFile |> mapError (ErrPipe.toFullExcFromParts None (Some f)) |> bind (loadAllFilesInner stdCtx (Some f))
 
-let loadAllFilesInner stdCtx (mainFileLoc: string option) (mainFileLines: string) : FullResult<Program * fileDependencyMap> =
+let loadAllFilesInner stdCtx mainFileLoc mainFileLines =
     mainFileLines 
     |> preparse
-    |> toFullResult mainFileLoc
+    |> Full.toResult mainFileLoc
     |> bind (fun lines -> 
         let startFileContentsMemo = [(mainFileLoc, lines)] |> Map.ofList
         loadDefCtxFromDependencies stdCtx.defCtx startFileContentsMemo Map.empty Files.standardFileLocations [] mainFileLoc
@@ -52,10 +52,10 @@ let loadAllFilesInner stdCtx (mainFileLoc: string option) (mainFileLines: string
         |> map (fun program -> program, depMap)
     )
 
-let rec loadDefCtxFromDependencies (baseDefCtx: DefinitionContext) (fileContentsMemo: fileContentsMemo) (depMemo: fileDependencyMap) (baseDeps: string array) (filesHigherUp: string option list) (maybeFileLoc: string option) : FullResult<DefinitionContext * fileDependencyMap * fileContentsMemo> =
-    let buildInnerException e = e |> Error |> toGenericResult |> toIntermediateResultWithoutLine |> toFullResult maybeFileLoc
+let rec loadDefCtxFromDependencies baseDefCtx fileContentsMemo depMemo baseDeps filesHigherUp maybeFileLoc : FullResult<DefinitionContext * fileDependencyMap * fileContentsMemo> =
+    let buildInnerException e = ErrPipe.toFullExcFromParts None maybeFileLoc e
     
-    if List.contains maybeFileLoc filesHigherUp then buildInnerException ("Circular import of " + fileLocOptionToString maybeFileLoc) else
+    if List.contains maybeFileLoc filesHigherUp then buildInnerException ("Circular import of " + fileLocOptionToString maybeFileLoc) |> Error else
     if depMemo.ContainsKey maybeFileLoc then (depMemo[maybeFileLoc], depMemo, fileContentsMemo) |> Ok else
 
     match fileContentsMemo.TryFind maybeFileLoc with
@@ -63,7 +63,7 @@ let rec loadDefCtxFromDependencies (baseDefCtx: DefinitionContext) (fileContents
     | None -> 
         maybeFileLoc
         |> Option.map (preparseFile)
-        |> Option.defaultValue (buildInnerException "Internal error: FileContentsMap does not contain interactive file")
+        |> Option.defaultValue (buildInnerException "Internal error: FileContentsMap does not contain interactive file" |> Error)
     |> bind (fun content -> 
         let localDefinedSymbols = extractCustomDefinitions content
         let dependencies = 
@@ -94,13 +94,13 @@ let rec loadDefCtxFromDependencies (baseDefCtx: DefinitionContext) (fileContents
         ) (Ok (localDefinedSymbols, depMemo, fileContentsMemoWithThisFile)) dependencies
     )
 
-let determineDependencies (currentDir: string) preParsedLines =
+let determineDependencies currentDir preParsedLines =
     preParsedLines
     |> Array.choose (fun (i, line) -> match line with | UnparsedModuleReference s -> Some s | _ -> None)
     |> Array.map (Files.toQualifiedFileLoc currentDir)
 
-let preparseFile (fileLoc: string) =
+let preparseFile fileLoc =
     fileLoc
     |> tryReadFileIntermedExc
     |> bind preparse
-    |> toFullResult (Some fileLoc)
+    |> Full.toResult (Some fileLoc)

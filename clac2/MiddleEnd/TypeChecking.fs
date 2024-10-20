@@ -18,12 +18,12 @@ let validateProgramTypes stdCtx (programAndDepMap: Program * fileDependencyMap) 
             |> Array.map (fun (loc, orderedFile) -> 
                 Some loc, orderedFile |> validateTypes stdCtx program false
             )
-            |> Array.map tupledToFullExc
+            |> Array.map Full.tupledToExc
             |> Result.combineToArray
 
         program.mainFile.content
         |> (validateTypes stdCtx program true)
-        |> toFullResult program.mainFile.maybeLocation
+        |> Full.toResult program.mainFile.maybeLocation
         |> bind (fun _ -> validateFileArray program.secondaryFiles)
         |> map (fun _ -> program)
     
@@ -60,8 +60,8 @@ let checkTypeDefinitions (stdCtx: StandardContext) typeCheckingCtx customTypes =
             if Array.contains x stdCtx.defCtx.types then None else
 
             let line = getLineForType typeCheckingCtx.types x
-            if List.contains x typesHigherUp' then Some(IntermediateExcFPPureMaybeLine ("Recursive type definition: " + x) line) else 
-            if Map.containsKey x typeCheckingCtx.types |> not then Some(IntermediateExcFPPureMaybeLine ("Unknown type: " + x) line) else
+            if List.contains x typesHigherUp' then Some(Intermediate.ExcFPPureMaybeLine ("Recursive type definition: " + x) line) else 
+            if Map.containsKey x typeCheckingCtx.types |> not then Some(Intermediate.ExcFPPureMaybeLine ("Unknown type: " + x) line) else
 
             checkTypeDefsInner typesHigherUp' typeCheckingCtx.types[x]
         )
@@ -97,28 +97,28 @@ let rec checkManipulation typeCheckingCtx m line expectedOutputType =
 
     if m.Length = 0 then 
         // supports "()"/unit this way
-        if expectedOutputType = AnyOut then None else Some (IntermediateExcFPPure ("Got empty manipulation when expecting output type of: " + expectedOutputType.ToString()) line)
+        if expectedOutputType = AnyOut then None else Some (Intermediate.ExcFPPure ("Got empty manipulation when expecting output type of: " + expectedOutputType.ToString()) line)
     else
 
     match m[0] with
     | Fn f ->
         if Primitive.isPrim f then
-            if m.Length > 1 then Some (IntermediateExcFPPure ("Primitive " + f + " used as function.") line) else
+            if m.Length > 1 then Some (Intermediate.ExcFPPure ("Primitive " + f + " used as function.") line) else
 
             let primitiveType = Primitive.getValidatedPrimitiveType f
-            if expectedOutputType <> AnyOut && expectedOutputType <> ExpectedType primitiveType then Some (IntermediateExcFPPure (sprintf "Expected output type for %s is %A, received %A" f expectedOutputType primitiveType) line) else None
+            if expectedOutputType <> AnyOut && expectedOutputType <> ExpectedType primitiveType then Some (Intermediate.ExcFPPure (sprintf "Expected output type for %s is %A, received %A" f expectedOutputType primitiveType) line) else None
         else
 
-        if not (typeCheckingCtx.signatures.ContainsKey f) then Some (IntermediateExcWithoutLine (SimpleExc ("Internal Error: customFnsMap does not contain function " + f + ". It probably was not registered in the front end."))) else
+        if not (typeCheckingCtx.signatures.ContainsKey f) then Some (Intermediate.ExcWithoutLine (Simple.Exc ("Internal Error: customFnsMap does not contain function " + f + ". It probably was not registered in the front end."))) else
 
         let signature = typeCheckingCtx.signatures[f]
-        if m.Length - 1 > signature.Length - 1 then Some (IntermediateExcFPPure (sprintf "Too many arguments for %s: Expected %i, got %i." f (signature.Length-1) (m.Length-1)) line) else
+        if m.Length - 1 > signature.Length - 1 then Some (Intermediate.ExcFPPure (sprintf "Too many arguments for %s: Expected %i, got %i." f (signature.Length-1) (m.Length-1)) line) else
 
         let inputIStop = m.Length - 2
         let inputSignature, outputSignature = signature[..inputIStop], signature[inputIStop+1..]
         let preparedOutputSignature = if outputSignature.Length = 1 then outputSignature[0] else Function outputSignature
 
-        if expectedOutputType <> AnyOut && expectedOutputType <> ExpectedType preparedOutputSignature then Some (IntermediateExcFPPure (sprintf "Expected output type for %s is %A, received %A" f expectedOutputType outputSignature) line) else
+        if expectedOutputType <> AnyOut && expectedOutputType <> ExpectedType preparedOutputSignature then Some (Intermediate.ExcFPPure (sprintf "Expected output type for %s is %A, received %A" f expectedOutputType outputSignature) line) else
         
         typesMatch inputSignature m[1..]
     | Manipulation m' -> 

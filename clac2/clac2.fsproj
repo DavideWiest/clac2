@@ -10,7 +10,7 @@
     <Compile Include="Core/Exc/Domain.fs" />
     <Compile Include="Core/Exc/Exceptions.fs" />
     <Compile Include="Core/Representation.fs" />
-    <Compile Include="Core/Edge.fs" />
+    <Compile Include="Core\Input.fs" />
     <Compile Include="Core/Language.fs" />
     <Compile Include="Core/ProgramUtils.fs" />
     <Compile Include="FrontEnd/Domain.fs" />

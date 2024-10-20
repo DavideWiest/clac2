@@ -74,7 +74,7 @@ module EvalCtx =
 
     let FullExcFromEvalCtx e evalCtx = 
         let _, lastExc = splitToTraceAndLastExc evalCtx
-        e |> GenExc |> IntermediateExc (lastExc.lineLocation) |> FullExc lastExc.fileLocation |> addLocTraceToExc evalCtx.locTrace |> Error
+        e |> GenExc |> Intermediate.Exc (lastExc.lineLocation) |> FullExc lastExc.fileLocation |> addLocTraceToExc evalCtx.locTrace |> Error
 
     let splitToTraceAndLastExc evalCtx = evalCtx.locTrace[1..], evalCtx.locTrace[0]
 

@@ -1,9 +1,8 @@
 module rec Clac2.Core.Input
 
+open System
 open Clac2.Core.Domain
 open Clac2.Core.Exc.Exceptions
-open System
-
 
 let getInput (args: string array) =
     if args.Length = 0 then
@@ -13,11 +12,11 @@ let getInput (args: string array) =
         File args[0]
 
 let tryReadFileIntermedExc file  =
-        tryReadFile file |> Intermediate.toResultWithoutLine
+        tryReadFile file |> Simple.toResult |> Intermediate.toResultWithoutLine
 
-let tryReadFile file  =
+let tryReadFile file : Result<string, string>  =
     try
         Ok (System.IO.File.ReadAllText file)
     with
-    | :? System.IO.FileNotFoundException as e -> Simple.toExcResult (sprintf "File not found: %s" file)
-    | e -> Simple.toExcResult (sprintf "Error reading file \"%s\": %s" file (e.ToString()))
+    | :? System.IO.FileNotFoundException as e -> Error (sprintf "File not found: %s" file)
+    | e -> Error (sprintf "Error reading file \"%s\": %s" file (e.ToString()))

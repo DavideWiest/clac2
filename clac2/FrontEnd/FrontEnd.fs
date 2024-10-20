@@ -11,7 +11,7 @@ open Clac2.Core.Language
 open Clac2.FrontEnd.Domain
 
 let parseFull fileLoc stdCtx input =
-    preparse input |> toFullResult fileLoc |> bind (parseFullResult fileLoc stdCtx.defCtx)
+    preparse input |> Full.toResult fileLoc |> bind (parseFullResult fileLoc stdCtx.defCtx)
 
 let preparse input =
     input
@@ -24,7 +24,7 @@ let preparse input =
     |> Array.map (Tuple.applyUnpacked ToUnparsedLine)
     |> Result.combineToArray
 
-let parseFullResult fileLoc defCtx preParsedLines = parse fileLoc defCtx preParsedLines |> toFullResult fileLoc 
+let parseFullResult fileLoc defCtx preParsedLines = parse fileLoc defCtx preParsedLines |> Full.toResult fileLoc 
 
 let parse fileLoc defCtx preParsedLines =  
     let (localTypesWithLines, localFunctionsWithLines) = extractCustomDefinitionsWithLine preParsedLines
@@ -32,7 +32,7 @@ let parse fileLoc defCtx preParsedLines =
     let duplicationError arr source symbolName = 
         let maybeDup = Array.chooseHigherOccurenceElements 1 arr source |> Array.tryHead
         match maybeDup with
-        | Some (dupLine, dupName) -> IntermediateExcFromParts ("Duplicate " + symbolName + " definition for: " + dupName) dupLine |> Some
+        | Some (dupLine, dupName) -> Intermediate.ExcFromParts ("Duplicate " + symbolName + " definition for: " + dupName) dupLine |> Some
         | None -> None
 
     let dupFnResult = duplicationError localFunctionsWithLines defCtx.functions "function"
@@ -42,7 +42,7 @@ let parse fileLoc defCtx preParsedLines =
 
     preParsedLines
     |> Array.map (fun (i, l) -> i, ParseLine (buildLoc fileLoc i) defCtx l)
-    |> Array.map (fun (i, r) -> toIntermediateResult i r)
+    |> Array.map (fun (i, r) -> Intermediate.toResult i r)
     |> Result.combineToArray
     |> map toOrderedFile
 
@@ -60,7 +60,7 @@ let extractCustomDefinitionsWithLine preParsedLines =
     localTypes, localFunctions
 
 let ToUnparsedLine i line =
-    line |> ToUnparsedLineInner |> toIntermediateResult i |> map (fun x -> (i, x))
+    line |> ToUnparsedLineInner |> Intermediate.toResult i |> map (fun x -> (i, x))
 
 let ToUnparsedLineInner line =
     if line.StartsWith "module " then
@@ -77,29 +77,29 @@ let ToUnparsedLineInner line =
 let ToUnparsedCallableFunction line =
     let partsBefore: string array = line |> Parsing.trimSplit [| ' ' |]
 
-    if partsBefore.Length < 2 then SimpleResult "Assignment missing parts. Missing space?" else
+    if partsBefore.Length < 2 then Simple.toExcResult "Assignment missing parts. Missing space?" else
     
     let fnOptionStrings, (parts: string array) = separateFnOptions [] partsBefore[1..]
 
-    if List.contains "infix" fnOptionStrings && List.contains "postfix" fnOptionStrings then SimpleResult "Function cannot be both infix and postfix." else 
-    if parts.Length < 5 then SimpleResult "Assignment missing parts. Missing space?" else
+    if List.contains "infix" fnOptionStrings && List.contains "postfix" fnOptionStrings then Simple.toExcResult "Function cannot be both infix and postfix." else 
+    if parts.Length < 5 then Simple.toExcResult "Assignment missing parts. Missing space?" else
 
     let firstColonI = parts |> Array.findIndex (fun x -> x = ":")
     let firstEqualI = parts |> Array.findIndex (fun x -> x = "=")
 
-    if firstColonI = -1 || firstEqualI = -1 then SimpleResult "Assignment missing a colon or an equals." else
-    if firstColonI > firstEqualI then SimpleResult "Assignment is missing a colon before the assignment." else
-    if firstColonI = firstEqualI - 1 then SimpleResult "Assignment missing type signature between colon and equals." else
-    if parts.Length = firstEqualI + 1 then SimpleResult "Assignment missing function body." else
+    if firstColonI = -1 || firstEqualI = -1 then Simple.toExcResult "Assignment missing a colon or an equals." else
+    if firstColonI > firstEqualI then Simple.toExcResult "Assignment is missing a colon before the assignment." else
+    if firstColonI = firstEqualI - 1 then Simple.toExcResult "Assignment missing type signature between colon and equals." else
+    if parts.Length = firstEqualI + 1 then Simple.toExcResult "Assignment missing function body." else
 
     let nameAndArgs = parts[..firstColonI-1]
     let name , args = nameAndArgs[0], nameAndArgs[1..]
-    if Syntax.nameIsInvalid name then SimpleResult ("Invalid function name: " + name) else
+    if Syntax.nameIsInvalid name then Simple.toExcResult ("Invalid function name: " + name) else
 
     extractFullSignature parts[firstColonI+1..firstEqualI-1]
     |> bind (fun (signatureParts: NestedItemsArray<string>) ->        
-        if (signatureParts.Length) - 1 <> (args |> Array.length) then SimpleResult (sprintf "Expected %i arguments, got %i. Signature: %A" (signatureParts.Length - 1) (args |> Array.length) signatureParts ) else
-        if args |> Array.map Syntax.nameIsInvalid |> Array.exists id then SimpleResult "Invalid argument name." else
+        if (signatureParts.Length) - 1 <> (args |> Array.length) then Simple.toExcResult (sprintf "Expected %i arguments, got %i. Signature: %A" (signatureParts.Length - 1) (args |> Array.length) signatureParts ) else
+        if args |> Array.map Syntax.nameIsInvalid |> Array.exists id then Simple.toExcResult "Invalid argument name." else
 
         parts[firstEqualI+1..] |> String.concat " " |> ToUnparsedManipulation
         |> map (fun fnBody ->
@@ -135,7 +135,7 @@ let extractFullSignature rawSignature =
 
             let typeRefSplit = typeRef.Split '*'
 
-            if typeRefSplit.Length <> 2 then SimpleResult ("Invalid type reference (asterisk found more than once): " + typeRef) else
+            if typeRefSplit.Length <> 2 then Simple.toExcResult ("Invalid type reference (asterisk found more than once): " + typeRef) else
             // checking if the type is a valid name is not necessary - they are references to defined types, which are checked (elsewhere)
 
             Array.init (int typeRefSplit[1]) (fun _ -> typeRefSplit[0]) |> Ok
@@ -156,13 +156,13 @@ let ToUnparsedManipulation line = line |> Parsing.parseNestedByBrackets
 
 let ToUnparsedTypeDefinition line=
     let parts = line |> Parsing.trimSplit [| ' ' |]
-    if parts.Length < 4 then SimpleResult "Type definition missing parts. Missing space?" else
+    if parts.Length < 4 then Simple.toExcResult "Type definition missing parts. Missing space?" else
 
     let maybeFirstColon = parts |> Array.tryFindIndex (fun x -> x = ":")
-    if maybeFirstColon.IsNone then SimpleResult "Type definition missing a colon separated by spaces." else
+    if maybeFirstColon.IsNone then Simple.toExcResult "Type definition missing a colon separated by spaces." else
 
     let name = parts[1]
-    if Syntax.nameIsInvalid name then SimpleResult ("Invalid type name: " + name) else
+    if Syntax.nameIsInvalid name then Simple.toExcResult ("Invalid type name: " + name) else
 
     extractFullSignature parts[maybeFirstColon.Value+1..]
     |> map (fun signatureParts -> { name = name; unparsedSignature = signatureParts })
@@ -200,17 +200,17 @@ let ParseTypeDefinition loc definitionContext t  =
 
 let stringToType definitionContext s =
     match s with
-    | s' when Array.contains s' definitionContext.types -> BaseFnType s' |> Ok |> toGenericResult
-    | _ -> SimpleResult ("Unknown type: " + s)
+    | s' when Array.contains s' definitionContext.types -> BaseFnType s' |> Ok |> Simple.toResult
+    | _ -> Simple.toExcResult ("Unknown type: " + s)
 
 let parseModuleDeclaration loc line =
     match loc.fileLocation with
-    | None -> SimpleResult "Module declaration outside of file."
+    | None -> Simple.toExcResult "Module declaration outside of file."
     | Some fileLoc -> 
         let dir = System.IO.Path.GetDirectoryName fileLoc
         
         // for now, module and files names must match
-        if Files.toQualifiedFileLoc dir line <> fileLoc then SimpleResult "Module declaration does not match file location." else
+        if Files.toQualifiedFileLoc dir line <> fileLoc then Simple.toExcResult "Module declaration does not match file location." else
 
         line |> Files.toQualifiedFileLoc dir |> ModuleDeclaration |> Ok
 
@@ -292,7 +292,7 @@ module Parsing =
         s
         |> Seq.fold (fun (maybeExc: SimpleExc option) c ->
             if maybeExc.IsSome then maybeExc else
-            if stack.Count = 0 && c = ')' then Some(SimpleExc (sprintf "Too many closing parantheses: %c" c)) 
+            if stack.Count = 0 && c = ')' then Some(Simple.Exc (sprintf "Too many closing parantheses: %c" c)) 
             else
 
                 if c = '(' then stack.Push c
@@ -300,7 +300,7 @@ module Parsing =
 
                 None
         ) None
-        |> Option.orElse (if stack.Count = 0 then None else Some(SimpleExc (sprintf "Unclosed parantheses: %A" stack)))
+        |> Option.orElse (if stack.Count = 0 then None else Some(Simple.Exc (sprintf "Unclosed parantheses: %A" stack)))
 
 module NestedItems =
 
@@ -335,9 +335,9 @@ module NestedItems =
             match x with 
             | NestedItem reference ->
                 if Array.contains reference definitionCtx.functions || Primitive.isPrim reference then
-                    reference |> Fn |> Ok |> toGenericResult
+                    reference |> Fn |> Ok |> Simple.toResult
                 else
-                    SimpleResult ("Unknown function: " + reference)
+                    Simple.toExcResult ("Unknown function: " + reference)
             | NestedArray a -> a |> toManipulation definitionCtx |> map Manipulation
         )
         |> Result.combineToArray

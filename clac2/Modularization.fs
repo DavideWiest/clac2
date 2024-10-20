@@ -13,13 +13,12 @@ open Clac2.FrontEnd.FrontEnd
 
 type fileContentsMemo = Map<string option, (int * UnparsedLine) array>
 
-
-let loadAndParseFiles (stdCtx: StandardContext) (unparsedMainFile: MainFileUnparsed) : FullClacResult<Program * depMap> =
+let loadAndParseFiles (stdCtx: StandardContext) (unparsedMainFile: MainFileUnparsed) : FullResult<Program * fileDependencyMap> =
     match unparsedMainFile with
     | Interactive s -> loadAllFilesInner stdCtx None s
     | File f -> f |> tryReadFileIntermedExc |> toFullResult (Some f) |> bind (loadAllFilesInner stdCtx (Some f))
 
-let loadAllFilesInner stdCtx (mainFileLoc: string option) (mainFileLines: string) : FullClacResult<Program * depMap> =
+let loadAllFilesInner stdCtx (mainFileLoc: string option) (mainFileLines: string) : FullResult<Program * fileDependencyMap> =
     mainFileLines 
     |> preparse
     |> toFullResult mainFileLoc
@@ -46,14 +45,14 @@ let loadAllFilesInner stdCtx (mainFileLoc: string option) (mainFileLines: string
                 parseFullResult (Some fileLoc) (DefCtx.getDefCtxWithStdCtxFromMap stdCtx depMap (Some fileLoc)) preParsedLines
                 |> map (fun orderedFile -> { location = fileLoc; content = orderedFile })
             )
-            |> combineResultsToArray
+            |> Result.combineToArray
 
-        joinTwoResults maybeMainFile maybeOtherFiles
+        Result.combineTwo maybeMainFile maybeOtherFiles
         |> map (fun (mainFile, otherFiles) -> { mainFile = mainFile; secondaryFiles = otherFiles })
         |> map (fun program -> program, depMap)
     )
 
-let rec loadDefCtxFromDependencies (baseDefCtx: DefinitionContext) (fileContentsMemo: fileContentsMemo) (depMemo: depMap) (baseDeps: string array) (filesHigherUp: string option list) (maybeFileLoc: string option) : FullClacResult<DefinitionContext * depMap * fileContentsMemo> =
+let rec loadDefCtxFromDependencies (baseDefCtx: DefinitionContext) (fileContentsMemo: fileContentsMemo) (depMemo: fileDependencyMap) (baseDeps: string array) (filesHigherUp: string option list) (maybeFileLoc: string option) : FullResult<DefinitionContext * fileDependencyMap * fileContentsMemo> =
     let buildInnerException e = e |> Error |> toGenericResult |> toIntermediateResultWithoutLine |> toFullResult maybeFileLoc
     
     if List.contains maybeFileLoc filesHigherUp then buildInnerException ("Circular import of " + fileLocOptionToString maybeFileLoc) else

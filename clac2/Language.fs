@@ -91,7 +91,7 @@ module Conversion =
             Ok (DefinedFn (name + sprintf " with %i/%i args curried" input.Length nArgs, fun args -> fnTypeToIntAdapter name f (Array.append input args) nArgs))
         else
 
-        let maybeDefinedInput = input |> Array.map (definedValueToInt) |> combineResultsToArray
+        let maybeDefinedInput = input |> Array.map (definedValueToInt) |> Result.combineToArray
 
         maybeDefinedInput
         |> bind (f >> PrimitiveInt >> DefinedPrimitive >> Ok)

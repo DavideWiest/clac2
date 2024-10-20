@@ -227,7 +227,7 @@ let convertToDefinedManipulation evalCtx substitutedManip : FullClacResult<Defin
         )
     ) (Ok [||])
 
-let substituteMany evalCtx (substitutions: Map<string, DefinedValue>) m = m |> Array.map (substituteOne evalCtx substitutions) |> combineResultsToArray
+let substituteMany evalCtx (substitutions: Map<string, DefinedValue>) m = m |> Array.map (substituteOne evalCtx substitutions) |> Result.combineToArray
 
 type SubsitutionResult = Ref of Reference | Val of DefinedValue
 
@@ -279,7 +279,7 @@ let evaluateOne evalCtx loc manipulation substitutions  =
     printfn "- subs: %A" substitutions
     let newEvalCtx = { evalCtx with locTrace = loc :: evalCtx.locTrace }
 
-    let substitutedManipulations = manipulation |> Array.map (betaSubstitute newEvalCtx substitutions) |> combineResultsToArray
+    let substitutedManipulations = manipulation |> Array.map (betaSubstitute newEvalCtx substitutions) |> Result.combineToArray
 
     printfn "- subsManip: %A" substitutedManipulations
 

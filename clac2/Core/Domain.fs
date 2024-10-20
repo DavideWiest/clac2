@@ -21,7 +21,7 @@ type MainFile = {
     content: OrderedFile
 }
 
-type depMap = Map<string option, DefinitionContext>
+type fileDependencyMap = Map<string option, DefinitionContext>
 
 // Program
 

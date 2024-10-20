@@ -9,7 +9,7 @@ open Clac2.Core.Language
 open Clac2.MiddleEnd.TypeCheckingCtx
 open Clac2.MiddleEnd.MiddleEndUtils
 
-let validateProgramTypes stdCtx (programAndDepMap: Program * depMap) : FullClacResult<Program> =
+let validateProgramTypes stdCtx (programAndDepMap: Program * fileDependencyMap) : FullResult<Program> =
         let (program, depMap) = programAndDepMap
 
         let validateFileArray (fileArr: File array) =
@@ -19,7 +19,7 @@ let validateProgramTypes stdCtx (programAndDepMap: Program * depMap) : FullClacR
                 Some loc, orderedFile |> validateTypes stdCtx program false
             )
             |> Array.map tupledToFullExc
-            |> combineResultsToArray
+            |> Result.combineToArray
 
         program.mainFile.content
         |> (validateTypes stdCtx program true)
@@ -109,7 +109,7 @@ let rec checkManipulation typeCheckingCtx m line expectedOutputType =
             if expectedOutputType <> AnyOut && expectedOutputType <> ExpectedType primitiveType then Some (IntermediateExcFPPure (sprintf "Expected output type for %s is %A, received %A" f expectedOutputType primitiveType) line) else None
         else
 
-        if not (typeCheckingCtx.signatures.ContainsKey f) then Some (IntermediateExcWithoutLine (GenExc ("Internal Error: customFnsMap does not contain function " + f + ". It probably was not registered in the front end."))) else
+        if not (typeCheckingCtx.signatures.ContainsKey f) then Some (IntermediateExcWithoutLine (SimpleExc ("Internal Error: customFnsMap does not contain function " + f + ". It probably was not registered in the front end."))) else
 
         let signature = typeCheckingCtx.signatures[f]
         if m.Length - 1 > signature.Length - 1 then Some (IntermediateExcFPPure (sprintf "Too many arguments for %s: Expected %i, got %i." f (signature.Length-1) (m.Length-1)) line) else

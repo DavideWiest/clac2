@@ -23,7 +23,7 @@ let main args =
     |> map (fun (program, depMap) -> applyNormalizationPipeline stdCtx program, depMap)
     |> bind (validateProgramTypes stdCtx)
     |> map (passAndReturn printProgram)
-    |> bind (fun program -> program |> evaluateFile stdCtx.definedCtx |> combineResultsToArray)
+    |> bind (fun program -> program |> evaluateFile stdCtx.definedCtx |> Result.combineToArray)
     |> (fun x ->
         match x with 
         | Ok results ->

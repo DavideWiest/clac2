@@ -16,9 +16,10 @@
     <Compile Include="FrontEnd/Domain.fs" />
     <Compile Include="FrontEnd/FrontEnd.fs" />
     <Compile Include="MiddleEnd/MiddleEndUtils.fs" />
-    <Compile Include="MiddleEnd\TypeCheckingCtx.fs" />
     <Compile Include="MiddleEnd/Normalization.fs" />
+    <Compile Include="MiddleEnd\TypeCheckingCtx.fs" />
     <Compile Include="MiddleEnd\TypeChecking.fs" />
+    <Compile Include="Interpreter/EvalCtx.fs" />
     <Compile Include="Interpreter/Interpreter.fs" />
     <Compile Include="Modularization.fs" />
     <Compile Include="Program.fs" />

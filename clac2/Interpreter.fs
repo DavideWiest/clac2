@@ -15,7 +15,7 @@ let evaluateOne oldEvalCtx loc manipulation substitutions  =
 
     manipulation[1..] 
     |> Array.map (substituteOne evalCtx substitutions [||]) 
-    |> combineResultsToArray
+    |> Result.combineToArray
     |> bind (fun tail ->
         match manipulation[0] with
         | Fn f when substitutions.ContainsKey f -> PrimitiveOrApply evalCtx tail substitutions[f]

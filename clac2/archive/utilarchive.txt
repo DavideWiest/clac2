@@ -1,0 +1,4 @@
+
+let hasDuplicatesBy (arr: 'a array) (f: 'a -> 'b) =
+    arr |> Array.groupBy f |> Array.exists (fun (_, a) -> a.Length > 1)
+

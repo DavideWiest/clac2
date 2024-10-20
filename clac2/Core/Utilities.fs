@@ -31,7 +31,7 @@ let applyTupledReversed f (x, i) = f (i, x)
 let stringIsEmpty (s: string) =
     s.Trim().Length = 0
 
-let upToIfContaints (s: string) (subStr: string) = 
+let String.cutOffAt (s: string) (subStr: string) = 
     if s.Contains subStr then s.Substring(0, s.IndexOf subStr) else s
 
 // Results
@@ -47,7 +47,7 @@ let combineResults (results: Result<'a, 'b> seq) =
         | Error e -> Error e
     ) (Ok [])
 
-let combineResultsToArray result = result |> combineResults |> map Array.ofList
+let Result.combineToArray result = result |> combineResults |> map Array.ofList
 
 let joinTwoResults (r1: Result<'a, 'b>) (r2: Result<'c, 'b>) =
     match (r1, r2) with 

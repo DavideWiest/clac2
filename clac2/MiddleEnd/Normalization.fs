@@ -66,7 +66,8 @@ let mapAllManipulations program manipMapOne =
 
     { program with mainFile = newMainFile; secondaryFiles = newSecondaryFiles }
 
-// it is crutial to apply the function to the outer manipulations first as it will influence the inner ones
+// for the argument propagation normalization, it is crucial to apply the function to the inner manipulations first
+// for functions that simplify manipulations (bottom-up), it is crucial to apply the function to the outer manipulations first
 let applyManipulationApplicationFromManipParent manipParent fnBuilder =
     let fn = fnBuilder manipParent
     match manipParent with

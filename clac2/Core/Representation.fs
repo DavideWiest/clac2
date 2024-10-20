@@ -21,15 +21,15 @@ let rec manipulationToString (m: Manipulation) =
     ) 
     |> String.concat " "
 
-let printFullExc callDir (e: FullGenericException) =
+let printFullExc callDir (e: FullExc) =
     let relFilePath path = System.IO.Path.GetRelativePath (callDir,path)
-    let (fileSubStr, lineSubStr, fileLink) = locPartsToString e.genExcWithLine.line e.fileLocation relFilePath
+    let (fileSubStr, lineSubStr, fileLink) = locPartsToString e.innerExc.line e.fileLocation relFilePath
     printfn "Error occured%s%s: %s" fileSubStr lineSubStr fileLink
-    if e.locTrace.IsSome then
-        for loc in e.locTrace.Value do
+    if e.maybeTrace.IsSome then
+        for loc in e.maybeTrace.Value do
             let (subFileSubStr, subLineSubStr, subFileLink) = locPartsToString (Some loc.lineLocation) loc.fileLocation relFilePath
             printfn "   - %s%s: %s" subFileSubStr subLineSubStr subFileLink
-    printfn "%s" e.genExcWithLine.genExc.message
+    printfn "%s" e.innerExc.innerExc.message
 
 let locPartsToString maybeLine maybeFile relFilePath = 
     let lineSubStr = if maybeLine.IsSome then sprintf " at line %d" (maybeLine.Value+1) else ""

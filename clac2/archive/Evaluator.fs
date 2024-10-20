@@ -32,7 +32,7 @@ let rec substituteOne evalCtx (substitutions: Map<string, DefinedValue>) x : Ful
         FullExcFromEvalCtx ("Function not found: " + f) evalCtx
 
 let substituteMany evalCtx (substitutions: Map<string, DefinedValue>) m : FullClacResult<DefinedValue array> = 
-    m |> Array.map (substituteOne evalCtx substitutions) |> combineResultsToArray
+    m |> Array.map (substituteOne evalCtx substitutions) |> Result.combineToArray
 
 let rec eval evalCtx (startFn: Reference) (args: DefinedValue array) : FullClacResult<DefinedValue> =
     let buildArgs evalCtx (argsBefore: DefinedValue array) (signature: FnType array) : FullClacResult<DefinedValue array> =

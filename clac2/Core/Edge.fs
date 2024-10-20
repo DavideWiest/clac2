@@ -19,5 +19,5 @@ let tryReadFile file  =
     try
         Ok (System.IO.File.ReadAllText file)
     with
-    | :? System.IO.FileNotFoundException as e -> GenExcError (sprintf "File not found: %s" file)
-    | e -> GenExcError (sprintf "Error reading file \"%s\": %s" file (e.ToString()))
+    | :? System.IO.FileNotFoundException as e -> SimpleResult (sprintf "File not found: %s" file)
+    | e -> SimpleResult (sprintf "Error reading file \"%s\": %s" file (e.ToString()))

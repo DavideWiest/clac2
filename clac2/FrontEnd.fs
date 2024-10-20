@@ -36,12 +36,12 @@ let preparse input =
     input
     |> Parsing.trimSplitSimple [| '\n' |]
     |> Array.mapi (fun i x -> (i, x))
-    |> Array.map (fun (i, x) -> i, upToIfContaints x Language.Syntax.commentIdentifer)
+    |> Array.map (fun (i, x) -> i, String.cutOffAt x Language.Syntax.commentIdentifer)
     |> Array.filter (fun x -> not ((snd x).StartsWith Syntax.commentIdentifer))
     |> Parsing.trimSplitIndexedArray [| ';' |]
     |> Array.filter (fun x -> (snd x) <> "")
     |> Array.map (applyUnpacked ToUnparsedLine)
-    |> combineResultsToArray
+    |> Result.combineToArray
 
 let parseFullResult fileLoc defCtx preParsedLines = parse fileLoc defCtx preParsedLines |> toFullResult fileLoc 
 
@@ -62,7 +62,7 @@ let parse fileLoc defCtx preParsedLines =
     preParsedLines
     |> Array.map (fun (i, l) -> i, ParseLine (buildLoc fileLoc i) defCtx l)
     |> Array.map (fun (i, r) -> toIntermediateResult i r)
-    |> combineResultsToArray
+    |> Result.combineToArray
     |> map toOrderedFile
 
 let extractCustomDefinitions preParsedLines  =
@@ -166,7 +166,7 @@ let extractFullSignature rawSignature =
         x
         |> Array.map (NestedItems.applyToInnerItems splitTypes)
         |> Array.map (NestedItems.combineResults)
-        |> combineResultsToArray
+        |> Result.combineToArray
         |> map NestedItems.concatLowestLevelItems
     )
 
@@ -337,7 +337,7 @@ module NestedItems =
             match i with
             | Ok x -> x |> NestedItem |> Ok
             | Error e -> Error e
-        | NestedArray a -> a |> Array.map combineResults |> combineResultsToArray |> map NestedArray
+        | NestedArray a -> a |> Array.map combineResults |> Result.combineToArray |> map NestedArray
 
     let rec toFnType definitionContext nestedItems = 
         nestedItems

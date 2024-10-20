@@ -74,7 +74,7 @@ module StandardContext =
         }
 
 module DefCtx =
-    let getDefCtxWithStdCtxFromMap stdCtx (depMap: depMap) fileLoc =
+    let getDefCtxWithStdCtxFromMap stdCtx (depMap: fileDependencyMap) fileLoc =
         mergeDefCtx stdCtx.defCtx depMap[fileLoc]
     
     let mergeDefCtxFromStdCtx stdCtx defCtx =
@@ -104,7 +104,7 @@ module Conversion =
             Ok (DefinedFn (name + sprintf " with %i/%i args curried" input.Length nArgs, fun args -> fnTypeToIntAdapter name f (Array.append input args) nArgs))
         else
 
-        let maybeDefinedInput = input |> Array.map (Primitive.definedValueToInt) |> combineResultsToArray
+        let maybeDefinedInput = input |> Array.map (Primitive.definedValueToInt) |> Result.combineToArray
 
         maybeDefinedInput
         |> bind (f >> PrimitiveInt >> DefinedPrimitive >> Ok)

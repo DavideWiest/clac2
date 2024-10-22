@@ -10,9 +10,9 @@ open Clac2.Core.Lang.Primitive
 open Clac2.MiddleEnd.TypeCheckingCtx
 open Clac2.MiddleEnd.MiddleEndUtils
 
-let validateProgramTypes definitionCtx definedCtx (programAndDepMap: Program * fileDependencyMap) : FullResult<Program> =
+let validateProgramTypes scopeCtx callableCtx (programAndDepMap: Program * fileDependencyMap) : FullResult<Program> =
     let (program, _) = programAndDepMap
-    let stdCtx = StdCtx.init  definedCtx definitionCtx
+    let stdCtx = StdCtx.init callableCtx scopeCtx
 
     let validateFileArray (fileArr: File array) =
         fileArr
@@ -58,7 +58,7 @@ let checkTypeDefinitions (stdCtx: StandardContext) typeCheckingCtx customTypes =
         |> Array.distinct
         |> Array.tryPick (fun x -> 
             // ignore base types
-            if Array.contains x stdCtx.defCtx.types then None else
+            if Array.contains x stdCtx.scope.types then None else
 
             let line = getLineForType typeCheckingCtx.types x
             if List.contains x typesHigherUp' then Some(Intermediate.ExcFPPureMaybeLine ("Recursive type definition: " + x) line) else 

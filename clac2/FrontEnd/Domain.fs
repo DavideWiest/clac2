@@ -7,12 +7,10 @@ type UnparsedLine =
     | UnparsedExpression of NestedItemArray<string>
     | UnparsedAssignment of UnparsedCallableFunction
     | UnparsedTypeDefinition of UnparsedTypeDefinition
-    | UnparsedModuleDeclaration of string
     | UnparsedModuleReference of string
 
 type Line =
     | ModuleReference of string 
-    | ModuleDeclaration of string 
     | Expression of FreeManipulation // will be sent to stdout
     | Assignment of CallableFunction
     | TypeDefinition of TypeDefinition

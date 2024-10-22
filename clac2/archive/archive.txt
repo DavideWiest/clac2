@@ -433,3 +433,16 @@ let rec toPrimitive defVal =
 ----- nested items: apply to items (array)
 
 let applyToItems f nestedItems  = nestedItems |> Array.map (fun x -> applyToInnerItems f x)
+
+----- frontend: module Declaration parsing
+
+let parseModuleDeclaration loc line =
+    match loc.fileLocation with
+    | None -> Simple.toExcResult "Module declaration outside of file."
+    | Some fileLoc -> 
+        let dir = System.IO.Path.GetDirectoryName fileLoc
+        
+        // for now, module and files names must match
+        if Files.toQualifiedFileLoc dir line <> fileLoc then Simple.toExcResult "Module declaration does not match file location." else
+
+        line |> Files.toQualifiedFileLoc dir |> ModuleDeclaration |> Ok

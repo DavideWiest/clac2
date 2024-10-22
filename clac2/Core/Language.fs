@@ -66,7 +66,7 @@ module StandardContext =
                 types = supportedTypes
                 functions = baseFuncs |> Array.map (fun x -> x.name)
             }
-            definedCtx = {
+            callableCtx = {
                 functions = baseFuncs
             }
         }

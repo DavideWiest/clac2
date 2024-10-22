@@ -5,12 +5,12 @@ open Clac2.Core.Context
 open Clac2.Core.Utils
 open Clac2.MiddleEnd.MiddleEndUtils
 
-let generateFunctionSignatureMap definedCtx program (mainFile: OrderedFile Option) =
+let generateFunctionSignatureMap callableCtx program (mainFile: OrderedFile Option) =
     let typesInFile = if mainFile.IsNone then [||] else mainFile.Value.assignments |> Array.map (fun x -> x.name, x.signature)
     [
         typesInFile
         program.secondaryFiles |> Array.map (fun f -> f.content.assignments |> Array.map (fun x -> x.name, x.signature)) |> Array.concat
-        definedCtx.functions |> Array.map (fun x -> x.name, x.signature)
+        callableCtx.functions |> Array.map (fun x -> x.name, x.signature)
     ]
     |> Array.concat
     |> Map.ofArray

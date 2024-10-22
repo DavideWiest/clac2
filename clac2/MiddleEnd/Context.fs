@@ -24,7 +24,7 @@ module TypeCheckingCtx =
             |> Map.ofArray
 
         // only secondary files are added, excluding the main file
-        let functionSignatureMap = generateFunctionSignatureMap stdCtx.definedCtx program (if isMainFile then Some file else None) // save computation
+        let functionSignatureMap = generateFunctionSignatureMap stdCtx.callableCtx program (if isMainFile then Some file else None) // save computation
 
         {
             types = typeMap
@@ -34,12 +34,12 @@ module TypeCheckingCtx =
 
 type StandardContext = {
     defCtx: DefinitionContext
-    definedCtx: DefinedContext
+    callableCtx: DefinedContext
 }
 
 module StdCtx =
     let init definitionContext definedContext  =
         {
             defCtx = definitionContext
-            definedCtx = definedContext 
+            callableCtx = definedContext 
         }

@@ -16,16 +16,16 @@ open Clac2.Modularization
 
 [<EntryPoint>]
 let main args =
-    let definedCtx = DefinedCtx.init allFunctions
-    let definitionCtx = DefinitionCtx.init Types.baseTypes allFunctions
+    let callableCtx = CallableCtx.init allFunctions
+    let scopeCtx = ScopeCtx.init Types.baseTypes allFunctions
 
     args
     |> getInput
-    |> loadAndParseFiles definitionCtx
-    |> map (fun (program, depMap) -> applyNormalizationPipeline definedCtx program, depMap)
-    |> bind (validateProgramTypes definedCtx definitionCtx)
-    |> map (passAndReturn printProgram)
-    |> bind (evaluateFile definedCtx >> Result.combineToArray)
-    |> map (passAndReturn (Array.iter printResult))
-    |> mapError (printFullExc Environment.CurrentDirectory)
+    |> loadAndParseFiles scopeCtx
+    |> map (fun (program, depMap) -> applyNormalizationPipeline callableCtx program, depMap)
+    |> bind (validateProgramTypes callableCtx scopeCtx)
+    |> map (passAndReturn Print.program)
+    |> bind (evaluateFile callableCtx >> Result.combineToArray)
+    |> map (passAndReturn (Array.iter Print.printResult))
+    |> mapError (Print.printFullExc Environment.CurrentDirectory)
     |> resultToReturnCode

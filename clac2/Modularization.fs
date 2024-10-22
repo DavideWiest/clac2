@@ -21,7 +21,7 @@ let loadAndParseFiles defCtx unparsedMainFile =
 
 let loadAllFilesInner defCtx mainFileLoc mainFileLines =
     mainFileLines 
-    |> preparse
+    |> lexFull
     |> Full.toResult mainFileLoc
     |> bind (fun lines -> 
         let startFileContentsMemo = [(mainFileLoc, lines)] |> Map.ofList
@@ -32,7 +32,7 @@ let loadAllFilesInner defCtx mainFileLoc mainFileLines =
         let (mainFileDefCtx, depMap, fileContentsMemo) = dependencyResult
 
         // use mainFileDefCtx, not over depmap, as it does not contain the first one (the main file)
-        let mainFileDefCtx' = DefinitionCtx.mergeDefCtx defCtx mainFileDefCtx
+        let mainFileDefCtx' = ScopeCtx.mergeDefCtx defCtx mainFileDefCtx
         let maybeMainFile = 
             parseFullResult mainFileLoc mainFileDefCtx' mainFileLines
             |> map (fun orderedFile -> { maybeLocation = mainFileLoc; content = orderedFile })
@@ -43,7 +43,7 @@ let loadAllFilesInner defCtx mainFileLoc mainFileLines =
             |> Array.filter (fun (loc, _) -> loc.IsSome && loc <> mainFileLoc)
             |> Array.map (fun (k,v) -> k.Value, v)
             |> Array.map (fun (fileLoc, preParsedLines) ->
-                parseFullResult (Some fileLoc) (DefinitionCtx.getDefCtxWithStdCtxFromMap defCtx depMap (Some fileLoc)) preParsedLines
+                parseFullResult (Some fileLoc) (ScopeCtx.getDefCtxWithStdCtxFromMap defCtx depMap (Some fileLoc)) preParsedLines
                 |> map (fun orderedFile -> { location = fileLoc; content = orderedFile })
             )
             |> Result.combineToArray
@@ -53,10 +53,10 @@ let loadAllFilesInner defCtx mainFileLoc mainFileLines =
         |> map (fun program -> program, depMap)
     )
 
-let rec loadDefCtxFromDependencies baseDefCtx fileContentsMemo depMemo baseDeps filesHigherUp maybeFileLoc : FullResult<DefinitionContext * fileDependencyMap * fileContentsMemo> =
+let rec loadDefCtxFromDependencies baseDefCtx fileContentsMemo depMemo baseDeps filesHigherUp maybeFileLoc : FullResult<ScopeCtx * fileDependencyMap * fileContentsMemo> =
     let buildInnerException e = ErrPipe.toFullExcFromParts None maybeFileLoc e
     
-    if List.contains maybeFileLoc filesHigherUp then buildInnerException ("Circular import of " + fileLocOptionToString maybeFileLoc) |> Error else
+    if List.contains maybeFileLoc filesHigherUp then buildInnerException ("Circular import of " + ToString.fileLocOption maybeFileLoc) |> Error else
     if depMemo.ContainsKey maybeFileLoc then (depMemo[maybeFileLoc], depMemo, fileContentsMemo) |> Ok else
 
     match fileContentsMemo.TryFind maybeFileLoc with
@@ -103,5 +103,5 @@ let determineDependencies currentDir preParsedLines =
 let preparseFile fileLoc =
     fileLoc
     |> tryReadFileIntermedExc
-    |> bind preparse
+    |> bind lexFull
     |> Full.toResult (Some fileLoc)

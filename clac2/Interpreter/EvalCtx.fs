@@ -11,7 +11,7 @@ type EvalCtx = {
 }
 
 module EvalCtx =
-    let init definedCtx program  = 
+    let init callableCtx program  = 
         {
             customAssignmentMap = 
                 program.secondaryFiles
@@ -22,7 +22,7 @@ module EvalCtx =
                 |> Array.concat
                 |> Map.ofArray
             stdFunctionsMap = 
-                definedCtx.functions
+                callableCtx.functions
                 |> Array.map (fun x -> x.name, (x.name, x.DefinedFn) |> DefinedFn)
                 |> Map.ofArray
             locTrace = []

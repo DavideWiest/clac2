@@ -9,10 +9,10 @@
     <Compile Include="Core\Context.fs" />
     <Compile Include="Core/Exc/Domain.fs" />
     <Compile Include="Core/Exc/Exceptions.fs" />
-    <Compile Include="Core/Representation.fs" />
     <Compile Include="Core\Input.fs" />
     <Compile Include="Core/Lang/Primitive.fs" />
     <Compile Include="Core\Lang/Language.fs" />
+    <Compile Include="Core/Representation.fs" />
     <Compile Include="Core/ProgramUtils.fs" />
     <Compile Include="BuiltIn/Util.fs" />
     <Compile Include="BuiltIn\BuiltInFn.fs" />
@@ -21,7 +21,7 @@
     <Compile Include="FrontEnd/Util.fs" />
     <Compile Include="FrontEnd/NestedItems.fs" />
     <Compile Include="FrontEnd/Domain.fs" />
-    <Compile Include="FrontEnd/Parsing.fs" />
+    <Compile Include="FrontEnd/Lexing.fs" />
     <Compile Include="FrontEnd/FrontEnd.fs" />
     <Compile Include="MiddleEnd/MiddleEndUtils.fs" />
     <Compile Include="MiddleEnd/Normalization.fs" />

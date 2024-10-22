@@ -6,8 +6,8 @@ open Clac2.Core.Domain
 open Clac2.Interpreter.EvalCtx
 open Clac2.Core.Lang.Primitive
 
-let evaluateFile definedCtx program =
-    program.mainFile.content.expressions |> Array.map (fun freeManip -> evaluateOne (EvalCtx.init definedCtx program) freeManip.loc freeManip.manip Map.empty)
+let evaluateFile callableCtx program =
+    program.mainFile.content.expressions |> Array.map (fun freeManip -> evaluateOne (EvalCtx.init callableCtx program) freeManip.loc freeManip.manip Map.empty)
 
 let evaluateOne oldEvalCtx loc manipulation substitutions  =
     let evalCtx = { oldEvalCtx with locTrace = loc :: oldEvalCtx.locTrace }

@@ -37,16 +37,16 @@ let rec toFnType definitionContext nestedItems =
     )
     |> Result.combineToArray
 
-let rec toManipulation (definitionCtx: DefinitionContext) nestedItems = 
+let rec toManipulation (scopeCtx: ScopeCtx) nestedItems = 
     nestedItems
     |> Array.map (fun x -> 
         match x with 
         | NestedItem reference ->
-            if Array.contains reference definitionCtx.functions || Primitive.isPrim reference then
+            if Array.contains reference scopeCtx.functions || Primitive.isPrim reference then
                 reference |> Fn |> Ok |> Simple.toResult
             else
                 Simple.toExcResult ("Unknown function: " + reference)
-        | NestedArray a -> a |> toManipulation definitionCtx |> map Manipulation
+        | NestedArray a -> a |> toManipulation scopeCtx |> map Manipulation
     )
     |> Result.combineToArray
 

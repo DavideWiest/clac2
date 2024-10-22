@@ -5,18 +5,18 @@ open Clac2.Core.Context
 open Clac2.Core.Lang.Primitive
 open Clac2.MiddleEnd.MiddleEndUtils
 
-let applyNormalizationPipeline definedCtx program = normalizationPipeline |> Array.fold (fun acc f -> f definedCtx acc) program
+let applyNormalizationPipeline callableCtx program = normalizationPipeline |> Array.fold (fun acc f -> f callableCtx acc) program
 
 // this order is important
-let normalizationPipeline: (DefinedContext -> Program -> Program) array = [|
+let normalizationPipeline: (CallableCtx -> Program -> Program) array = [|
     ArgumentPropagation.nestArgumentPropagations
     OperatorFixation.operatorFixationCorrection
 |]
 
 module ArgumentPropagation = 
-    let nestArgumentPropagations definedCtx program =
-        let functionSignatureMap = generateFunctionSignatureMap definedCtx program (Some program.mainFile.content)
-        mapAllManipulations program (nestArgumentPropagationsInner (createFixationMap definedCtx program) functionSignatureMap)
+    let nestArgumentPropagations callableCtx program =
+        let functionSignatureMap = generateFunctionSignatureMap callableCtx program (Some program.mainFile.content)
+        mapAllManipulations program (nestArgumentPropagationsInner (createFixationMap callableCtx program) functionSignatureMap)
 
     let nestArgumentPropagationsInner (fixationMap: Map<string, OperatorFixation>) (functionSignatureMap: Map<string,Signature>) manipParent =
         let fnBuilder manipParent'= 
@@ -40,7 +40,7 @@ module ArgumentPropagation =
         else m
 
 module OperatorFixation = 
-    let operatorFixationCorrection definedCtx program = mapAllManipulations program (operatorFixationToPrefixOuter (createFixationMap definedCtx program))
+    let operatorFixationCorrection callableCtx program = mapAllManipulations program (operatorFixationToPrefixOuter (createFixationMap callableCtx program))
 
     let operatorFixationToPrefixOuter fixationMap manip =
         applyManipulationApplicationFromManipParent manip (fun _ -> operatorFixationToPrefix fixationMap)
@@ -81,11 +81,11 @@ let rec recursivelyApplyToInnerManipulations f x =
     | Manipulation m -> m |> f |> Array.map (recursivelyApplyToInnerManipulations f) |> Manipulation // inner first or outer first? It probably doesn't matter
     | Fn _ -> x
 
-let createFixationMap definedCtx program =
+let createFixationMap callableCtx program =
     (Array.append (program.secondaryFiles |> Array.map (fun x -> x.content)) [| program.mainFile.content |])
     |> Array.map extractFixationFromFile
     |> Array.concat
-    |> Array.append (extractFixationFromBuiltIns definedCtx.functions)
+    |> Array.append (extractFixationFromBuiltIns callableCtx.functions)
     |> Map.ofArray
 
 let extractFixationFromFile orderedFile = orderedFile.assignments |> Array.map (fun x -> x.name, x.fnOptions.fixation)

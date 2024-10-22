@@ -18,13 +18,13 @@ module StdCtx =
     let init definitionContext definedContext  =
         {
             defCtx = definitionContext
-            definedCtx = definedContext 
+            callableCtx = definedContext 
         }
 
-module DefinedCtx =
+module callableCtx =
     let init (functions: DefinedCallableFunction array) = { functions = functions }
 
-module DefinitionCtx =
+module scopeCtx =
     let init types functions = { types = types; functions = functions |> Array.map (fun x -> x.name) }
 
     let getDefCtxWithStdCtxFromMap defCtx (depMap: fileDependencyMap) fileLoc = mergeDefCtx defCtx depMap[fileLoc]

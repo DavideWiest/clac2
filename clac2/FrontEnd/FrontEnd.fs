@@ -9,22 +9,22 @@ open Clac2.Core.Lang.Language
 open Clac2.FrontEnd.Util
 open Clac2.FrontEnd.Domain
 open Clac2.FrontEnd.NestedItems
-open Clac2.FrontEnd.Parsing
+open Clac2.FrontEnd.Lexing
 
-let preparse input =
+let lexFull input =
     input
-    |> Parsing.trimSplitSimple [| '\n' |]
+    |> trimSplitSimple [| '\n' |]
     |> Array.mapi (fun i x -> (i, x))
     |> Array.map (fun (i, x) -> i, String.cutOffAt x Syntax.commentIdentifer)
     |> Array.filter (fun x -> not ((snd x).StartsWith Syntax.commentIdentifer))
-    |> Parsing.trimSplitIndexedArray [| ';' |]
+    |> trimSplitIndexedArray [| ';' |]
     |> Array.filter (fun x -> (snd x) <> "")
     |> Array.map (Tuple.applyUnpacked ToUnparsedLine)
     |> Result.combineToArray
 
 let parseFullResult fileLoc defCtx preParsedLines = parse fileLoc defCtx preParsedLines |> Full.toResult fileLoc 
 
-let parse fileLoc (defCtx: DefinitionContext) preParsedLines =  
+let parse fileLoc (defCtx: ScopeCtx) preParsedLines =  
     let (localTypesWithLines, localFunctionsWithLines) = extractCustomDefinitionsWithLine preParsedLines
 
     let duplicationError arr source symbolName = 
@@ -61,23 +61,22 @@ let ToUnparsedLine i line =
     line |> ToUnparsedLineInner |> Intermediate.toResult i |> map (fun x -> (i, x))
 
 let ToUnparsedLineInner line =
-    if line.StartsWith "module " then
-        line.Substring(7) |> UnparsedModuleDeclaration |> Ok
-    else if line.StartsWith "open " then
-        line.Substring(5) |> UnparsedModuleReference |> Ok
-    else if line.StartsWith "let " then
-        line |> ToUnparsedCallableFunction |> map UnparsedAssignment
-    else if line.StartsWith "type " then
-        line |> ToUnparsedTypeDefinition |> map UnparsedTypeDefinition
+    if line.StartsWith (Syntax.openModuleKeyword + " ") then
+        line.Substring(Syntax.openModuleKeyword.Length) |> UnparsedModuleReference |> Ok
+    else if line.StartsWith (Syntax.assignKeyword + " ") then
+        printfn "Parsing line: %s" (line.Substring(Syntax.assignKeyword.Length))
+        line.Substring(Syntax.assignKeyword.Length) |> ToUnparsedCallableFunction |> map UnparsedAssignment
+    else if line.StartsWith (Syntax.defineTypeKeywoerd + " ") then
+        line.Substring(Syntax.defineTypeKeywoerd.Length) |> ToUnparsedTypeDefinition |> map UnparsedTypeDefinition
     else
         line |> ToUnparsedManipulation |> map UnparsedExpression
 
 let ToUnparsedCallableFunction line =
-    let partsBefore: string array = line |> Parsing.trimSplit [| ' ' |]
+    let partsBefore: string array = line |> trimSplit [| ' ' |]
 
     if partsBefore.Length < 2 then Simple.toExcResult "Assignment missing parts. Missing space?" else
     
-    let fnOptionStrings, (parts: string array) = separateFnOptions [] partsBefore[1..]
+    let fnOptionStrings, (parts: string array) = separateFnOptions [] partsBefore
 
     if List.contains "infix" fnOptionStrings && List.contains "postfix" fnOptionStrings then Simple.toExcResult "Function cannot be both infix and postfix." else 
     if parts.Length < 5 then Simple.toExcResult "Assignment missing parts. Missing space?" else
@@ -113,7 +112,7 @@ let ToUnparsedCallableFunction line =
 
 let rec separateFnOptions optionsAcc parts =
     if Array.contains parts[0] FuncData.fnOptions then
-        separateFnOptions (parts[0]::optionsAcc) parts.[1..]
+        separateFnOptions (parts[0]::optionsAcc) parts[1..]
     else
         optionsAcc, parts
 
@@ -140,7 +139,7 @@ let extractFullSignature rawSignature =
 
     rawSignature
     |> String.concat " "
-    |> Parsing.parseNestedByBrackets
+    |> parseNestedByBrackets
     |> bind (fun x ->
         x
         |> Array.map (NestedItems.applyToInnerItems splitTypes)
@@ -150,27 +149,26 @@ let extractFullSignature rawSignature =
     )
 
 // does not support precedence/nesting
-let ToUnparsedManipulation line = line |> Parsing.parseNestedByBrackets
+let ToUnparsedManipulation line = line |> parseNestedByBrackets
 
 let ToUnparsedTypeDefinition line =
     let parts = line |> trimSplit [| ' ' |]
-    if parts.Length < 4 then Simple.toExcResult "Type definition missing parts. Missing space?" else
+    if parts.Length < 3 then Simple.toExcResult "Type definition missing parts. Missing space?" else
 
     let maybeFirstColon = parts |> Array.tryFindIndex (fun x -> x = ":")
     if maybeFirstColon.IsNone then Simple.toExcResult "Type definition missing a colon separated by spaces." else
 
-    let name = parts[1]
+    let name = parts[0]
     if Syntax.nameIsInvalid name then Simple.toExcResult ("Invalid type name: " + name) else
 
     extractFullSignature parts[maybeFirstColon.Value+1..]
     |> map (fun signatureParts -> { name = name; unparsedSignature = signatureParts })
 
-let ParseLine loc (definitionContext: DefinitionContext) line  =
+let ParseLine loc (definitionContext: ScopeCtx) line  =
     match line with
     | UnparsedExpression m -> m |> ParseManipulation definitionContext |> map (fun manipulation -> Expression { manip = manipulation; loc = loc })
     | UnparsedAssignment f -> f |> ParseCallableFunction loc definitionContext |> map Assignment
     | UnparsedTypeDefinition t -> t |> ParseTypeDefinition loc definitionContext |> map TypeDefinition
-    | UnparsedModuleDeclaration m -> parseModuleDeclaration loc m
     | UnparsedModuleReference m -> parseModuleReference loc m
 
 let ParseCallableFunction loc definitionContext f =
@@ -189,24 +187,12 @@ let ParseCallableFunction loc definitionContext f =
         } |> Ok
     )
 
-let ParseManipulation (definitionContext: DefinitionContext) m = m |> NestedItems.toManipulation definitionContext
+let ParseManipulation (definitionContext: ScopeCtx) m = m |> NestedItems.toManipulation definitionContext
 
 let ParseTypeDefinition loc definitionContext t  =
     t.unparsedSignature 
     |> NestedItems.toFnType definitionContext
     |> map (fun signature -> { name = t.name; signature = signature; loc=loc })
-
-
-let parseModuleDeclaration loc line =
-    match loc.fileLocation with
-    | None -> Simple.toExcResult "Module declaration outside of file."
-    | Some fileLoc -> 
-        let dir = System.IO.Path.GetDirectoryName fileLoc
-        
-        // for now, module and files names must match
-        if Files.toQualifiedFileLoc dir line <> fileLoc then Simple.toExcResult "Module declaration does not match file location." else
-
-        line |> Files.toQualifiedFileLoc dir |> ModuleDeclaration |> Ok
 
 let parseModuleReference loc line =
     let dir = getDirOfReference loc.fileLocation

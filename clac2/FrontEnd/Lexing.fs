@@ -1,4 +1,4 @@
-module rec Clac2.FrontEnd.Parsing
+module rec Clac2.FrontEnd.Lexing
 
 open System.Collections.Generic
 open Clac2.Core.Exc.Domain

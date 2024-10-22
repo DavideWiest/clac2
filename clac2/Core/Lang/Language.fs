@@ -22,7 +22,10 @@ module FuncData =
 
 module Types =
     let baseTypes = [| "int"; "float" |]
-    let intType = BaseFnType "int"
+    
+    let TInt = BaseFnType "int"
+    let TFloat = BaseFnType "float"
+    let TBool = BaseFnType "bool"
 
 module Files =
     let officialExtensions = [| "clac" |]

@@ -82,7 +82,7 @@ type FnType =
 type Primitive =
     | PInt of int
     | PFloat of float
-    // | PBool of bool
+    | PBool of bool
 
 // Defined
 

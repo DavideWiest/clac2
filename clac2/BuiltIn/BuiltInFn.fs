@@ -42,5 +42,3 @@ module DefinedCallableFunction =
             DefinedFn = fn
             fnOptions = fnOptions
         }
-
-let genericFnOptions = { fixation = Prefix; noMemo = false }

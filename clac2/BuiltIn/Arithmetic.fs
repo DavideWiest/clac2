@@ -1,17 +1,18 @@
 module rec Clac2.BuiltIn.Arithmetic
 
+open FSharp.Core.Result
 open Clac2.Core.Utils
 open Clac2.Core.Domain
+open Clac2.Core.Lang.Primitive
 open Clac2.Core.Lang.Language
-open Clac2.BuiltIn.Interface
+open Clac2.BuiltIn.Util
+open Clac2.BuiltIn.BuiltInFn
 
-let toInt defVal =
-    match defVal with
-    | DefinedPrimitive (PInt i) -> Ok i
-    | _ -> Error (sprintf "Expected int, got %A" defVal)
-
-let toIntArray defVals = defVals |> Array.map toInt |> Result.combineToArray
-let toDefinedValue n = n |> PInt |> DefinedPrimitive
+let toIntArray defVals = 
+    defVals 
+    |> Array.map DefinedValue.toPrimitive 
+    |> Result.combineToArray 
+    |> bind (Array.map Primitive.toInt >> Result.combineToArray)
 
 let arithmeticFuncs = 
     [|
@@ -29,12 +30,11 @@ let arithmeticFuncs =
     |> Array.map (fun (name, fix, f) -> 
         {
             name = name
-            signature = [| Types.intType; Types.intType; Types.intType |]
+            signature = [| Types.TInt; Types.TInt; Types.TInt |]
             args = [| "n1"; "n2" |]
             fnOptions = { genericFnOptions with fixation = fix }
             conversionFn = toIntArray
             innerFn = fun input -> Array.reduce f input |> Ok
-            reconversionFn = toDefinedValue
+            reconversionFn = PInt >> DefinedPrimitive
         }
     )
-

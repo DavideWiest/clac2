@@ -15,6 +15,7 @@
     <Compile Include="Core/Lang/Primitive.fs" />
     <Compile Include="Core\Lang/Language.fs" />
     <Compile Include="Core/ProgramUtils.fs" />
+    <Compile Include="BuiltIn/Util.fs" />
     <Compile Include="BuiltIn\BuiltInFn.fs" />
     <Compile Include="BuiltIn/Arithmetic.fs" />
     <Compile Include="BuiltIn/BuiltIn.fs" />

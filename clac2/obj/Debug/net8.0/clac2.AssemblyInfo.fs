@@ -10,7 +10,7 @@ open System.Reflection
 [<assembly: System.Reflection.AssemblyCompanyAttribute("clac2")>]
 [<assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")>]
 [<assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")>]
-[<assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+25824cbcf9227dfee157c51385257b429fe9c81b")>]
+[<assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+4fa39262509384a4a055c536ee261f475259fee4")>]
 [<assembly: System.Reflection.AssemblyProductAttribute("clac2")>]
 [<assembly: System.Reflection.AssemblyTitleAttribute("clac2")>]
 [<assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")>]

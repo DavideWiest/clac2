@@ -5,8 +5,8 @@ open Clac2.Core.Utils
 open Clac2.Core.Domain
 open Clac2.Core.Context
 open Clac2.Core.Exc.Exceptions
-open Clac2.Core.DomainUtils
 open Clac2.Core.Lang.Language
+open Clac2.FrontEnd.Util
 open Clac2.FrontEnd.Domain
 open Clac2.FrontEnd.NestedItems
 open Clac2.FrontEnd.Parsing

@@ -14,9 +14,6 @@ type NestedItem<'a> =
     | NestedItem of 'a
     | NestedArray of NestedItem<'a> array
 
-
-let applyToItems f nestedItems  = nestedItems |> Array.map (fun x -> applyToInnerItems f x)
-
 let rec applyToInnerItems f nestedItems = 
     match nestedItems with 
     | NestedItem i -> f i |> NestedItem

@@ -12,11 +12,8 @@ module Map =
 
 module Tuple = 
     let applyUnpacked f (i, x) = f i x
-    let applyTupledReversed f (x, i) = f (i, x)
 
 module String =
-    let trimmedIsEmpty (s: string) = s.Trim().Length = 0
-        
     let cutOffAt (s: string) (subStr: string) = if s.Contains subStr then s.Substring(0, s.IndexOf subStr) else s
 
 module Result =

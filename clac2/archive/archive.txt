@@ -429,3 +429,7 @@ let rec toPrimitive defVal =
     match defVal with
     | DefinedPrimitive p -> p |> Ok
     | DefinedFn (_, f) -> f [| |] |> bind toPrimitive
+
+----- nested items: apply to items (array)
+
+let applyToItems f nestedItems  = nestedItems |> Array.map (fun x -> applyToInnerItems f x)

@@ -35,4 +35,3 @@ module Full =
 
 module ErrPipe = 
     let toFullExcFromParts line maybeFilePath e = e |> Simple.Exc |> Intermediate.ExcMaybeLine line |> Full.Exc maybeFilePath
-    let toFullResultFromParts line maybeFilePath r = r |> mapError (toFullExcFromParts line maybeFilePath)

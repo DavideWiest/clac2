@@ -15,7 +15,7 @@ module Syntax =
         || Primitive.isPrim name
         || Array.contains name FuncData.fnOptions
         || Array.contains name Types.baseTypes
-        || Array.contains name Files.officialExtensions
+        || Array.contains name reservedVariables
 
 module FuncData =
     let fnOptions = [| "infix"; "postfix"; "noMemo" |]

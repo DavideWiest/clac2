@@ -3,16 +3,16 @@
   "WorkspaceRootPath": "C:\\Users\\DavWi\\OneDrive\\Desktop\\V-ProjektDateien\\Projekte\\clac2\\",
   "Documents": [
     {
-      "AbsoluteMoniker": "D:0:0:{9A9522E0-500C-44B0-A17A-22C72E0FF5A8}|clac2.fsproj|c:\\users\\davwi\\onedrive\\desktop\\v-projektdateien\\projekte\\clac2\\clac2\\frontend\\util.fs||{8A5AA6CF-46E3-4520-A70A-7393D15233E9}",
-      "RelativeMoniker": "D:0:0:{9A9522E0-500C-44B0-A17A-22C72E0FF5A8}|clac2.fsproj|solutionrelative:clac2\\frontend\\util.fs||{8A5AA6CF-46E3-4520-A70A-7393D15233E9}"
+      "AbsoluteMoniker": "D:0:0:{9A9522E0-500C-44B0-A17A-22C72E0FF5A8}|clac2\\clac2.fsproj|c:\\users\\davwi\\onedrive\\desktop\\v-projektdateien\\projekte\\clac2\\clac2\\frontend\\util.fs||{8A5AA6CF-46E3-4520-A70A-7393D15233E9}",
+      "RelativeMoniker": "D:0:0:{9A9522E0-500C-44B0-A17A-22C72E0FF5A8}|clac2\\clac2.fsproj|solutionrelative:clac2\\frontend\\util.fs||{8A5AA6CF-46E3-4520-A70A-7393D15233E9}"
     },
     {
-      "AbsoluteMoniker": "D:0:0:{9A9522E0-500C-44B0-A17A-22C72E0FF5A8}|clac2.fsproj|c:\\users\\davwi\\onedrive\\desktop\\v-projektdateien\\projekte\\clac2\\clac2\\builtin\\util.fs||{8A5AA6CF-46E3-4520-A70A-7393D15233E9}",
-      "RelativeMoniker": "D:0:0:{9A9522E0-500C-44B0-A17A-22C72E0FF5A8}|clac2.fsproj|solutionrelative:clac2\\builtin\\util.fs||{8A5AA6CF-46E3-4520-A70A-7393D15233E9}"
+      "AbsoluteMoniker": "D:0:0:{9A9522E0-500C-44B0-A17A-22C72E0FF5A8}|clac2\\clac2.fsproj|c:\\users\\davwi\\onedrive\\desktop\\v-projektdateien\\projekte\\clac2\\clac2\\builtin\\util.fs||{8A5AA6CF-46E3-4520-A70A-7393D15233E9}",
+      "RelativeMoniker": "D:0:0:{9A9522E0-500C-44B0-A17A-22C72E0FF5A8}|clac2\\clac2.fsproj|solutionrelative:clac2\\builtin\\util.fs||{8A5AA6CF-46E3-4520-A70A-7393D15233E9}"
     },
     {
-      "AbsoluteMoniker": "D:0:0:{9A9522E0-500C-44B0-A17A-22C72E0FF5A8}|clac2.fsproj|c:\\users\\davwi\\onedrive\\desktop\\v-projektdateien\\projekte\\clac2\\clac2\\program.fs||{8A5AA6CF-46E3-4520-A70A-7393D15233E9}",
-      "RelativeMoniker": "D:0:0:{9A9522E0-500C-44B0-A17A-22C72E0FF5A8}|clac2.fsproj|solutionrelative:clac2\\program.fs||{8A5AA6CF-46E3-4520-A70A-7393D15233E9}"
+      "AbsoluteMoniker": "D:0:0:{9A9522E0-500C-44B0-A17A-22C72E0FF5A8}|clac2\\clac2.fsproj|c:\\users\\davwi\\onedrive\\desktop\\v-projektdateien\\projekte\\clac2\\clac2\\program.fs||{8A5AA6CF-46E3-4520-A70A-7393D15233E9}",
+      "RelativeMoniker": "D:0:0:{9A9522E0-500C-44B0-A17A-22C72E0FF5A8}|clac2\\clac2.fsproj|solutionrelative:clac2\\program.fs||{8A5AA6CF-46E3-4520-A70A-7393D15233E9}"
     }
   ],
   "DocumentGroupContainers": [
@@ -40,7 +40,7 @@
               "RelativeDocumentMoniker": "clac2\\FrontEnd\\Util.fs",
               "ToolTip": "C:\\Users\\DavWi\\OneDrive\\Desktop\\V-ProjektDateien\\Projekte\\clac2\\clac2\\FrontEnd\\Util.fs",
               "RelativeToolTip": "clac2\\FrontEnd\\Util.fs",
-              "ViewState": "AQIAAAAAAAAAAAAAAAAAAAQAAAAeAAAA",
+              "ViewState": "AQIAAAAAAAAAAAAAAAAAAAkAAAA0AAAA",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.001001|",
               "WhenOpened": "2024-10-22T13:54:24.111Z",
               "EditorCaption": ""
@@ -55,8 +55,7 @@
               "RelativeToolTip": "clac2\\BuiltIn\\Util.fs",
               "ViewState": "AQIAAAAAAAAAAAAAAAAAAA0AAAAmAAAA",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.001001|",
-              "WhenOpened": "2024-10-22T13:54:13.488Z",
-              "EditorCaption": ""
+              "WhenOpened": "2024-10-22T13:54:13.488Z"
             },
             {
               "$type": "Document",
@@ -68,8 +67,7 @@
               "RelativeToolTip": "clac2\\Program.fs",
               "ViewState": "AQIAAAAAAAAAAAAAAAAAAB8AAAAAAAAA",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.001001|",
-              "WhenOpened": "2024-10-22T13:54:06Z",
-              "EditorCaption": ""
+              "WhenOpened": "2024-10-22T13:54:06Z"
             }
           ]
         },

@@ -6,7 +6,6 @@
   <ItemGroup>
     <Compile Include="Core\Utils.fs" />
     <Compile Include="Core/Domain.fs" />
-    <Compile Include="Core\DomainUtiils.fs" />
     <Compile Include="Core\Context.fs" />
     <Compile Include="Core/Exc/Domain.fs" />
     <Compile Include="Core/Exc/Exceptions.fs" />

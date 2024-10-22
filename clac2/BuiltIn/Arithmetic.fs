@@ -1,11 +1,17 @@
 module rec Clac2.BuiltIn.Arithmetic
 
+open Clac2.Core.Utils
 open Clac2.Core.Domain
 open Clac2.Core.Lang.Language
-open Clac2.BuiltIn.Util
+open Clac2.BuiltIn.Interface
 
-let basicArithmeticArgsAndSignature = [| ("n1", Types.intType); ("n2", Types.intType) |]
-let basicArithmeticOptions = { fixation = Prefix; noMemo = false }
+let toInt defVal =
+    match defVal with
+    | DefinedPrimitive (PInt i) -> Ok i
+    | _ -> Error (sprintf "Expected int, got %A" defVal)
+
+let toIntArray defVals = defVals |> Array.map toInt |> Result.combineToArray
+let toDefinedValue n = n |> PInt |> DefinedPrimitive
 
 let arithmeticFuncs = 
     [|
@@ -20,6 +26,15 @@ let arithmeticFuncs =
         ("/", Infix, (/))
         ("^", Infix, pown)
     |]
-    |> Array.map (fun (k, fix, f) -> k, fix, fun input -> Array.reduce f input)
-    |> Array.map (fun (k, fix, f) -> k, fix, fun input -> Conversion.fnTypeToTAdapter PoInt k f input 2)
-    |> Array.map (Conversion.fSharpFunctionToFn basicArithmeticArgsAndSignature Types.intType basicArithmeticOptions)
+    |> Array.map (fun (name, fix, f) -> 
+        {
+            name = name
+            signature = [| Types.intType; Types.intType; Types.intType |]
+            args = [| "n1"; "n2" |]
+            fnOptions = { genericFnOptions with fixation = fix }
+            conversionFn = toIntArray
+            innerFn = fun input -> Array.reduce f input |> Ok
+            reconversionFn = toDefinedValue
+        }
+    )
+

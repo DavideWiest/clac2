@@ -21,7 +21,7 @@ module FuncData =
     let fnOptions = [| "infix"; "postfix"; "noMemo" |]
 
 module Types =
-    let baseTypes = [| "int" |]
+    let baseTypes = [| "int"; "float" |]
     let intType = BaseFnType "int"
 
 module Files =

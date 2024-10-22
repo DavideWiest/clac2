@@ -125,7 +125,7 @@ module Primitive =
         // ints
         if Seq.forall Char.IsDigit p then p |> int |> PrimitiveInt else
 
-        failwith ("Internal Error: Unable to parse primitive: " + p)
+        failwithf "Internal Error: Unable to parse primitive: %s" p
 
     let isPrim (s: string) = 
         // ints

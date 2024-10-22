@@ -13,12 +13,9 @@ module Primitive =
 
     let isPrim (s: string) = read s |> Option.isSome
 
-    let toPrimOption p = 
+    let primToFnType p = 
         match p with
-        | PInt _ -> PoInt
+        | PInt _ -> BaseFnType "int"
+        | PFloat _ -> BaseFnType "float"
 
-    let primOptionToFnType po =
-        match po with
-        | PoInt -> BaseFnType "int"
-
-    let typeOfPrimitive p = p |> toPrimOption |> primOptionToFnType
+    let typeOfPrimitive p = p |> primToFnType

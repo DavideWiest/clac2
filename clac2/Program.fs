@@ -1,4 +1,5 @@
 ﻿
+open System
 open FSharp.Core.Result
 open Clac2.Core.Utils
 open Clac2.Core.Context
@@ -26,4 +27,5 @@ let main args =
     |> map (passAndReturn printProgram)
     |> bind (evaluateFile definedCtx >> Result.combineToArray)
     |> map (passAndReturn (Array.iter printResult))
+    |> mapError (printFullExc Environment.CurrentDirectory)
     |> resultToReturnCode

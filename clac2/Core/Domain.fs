@@ -84,11 +84,6 @@ type Primitive =
     | PFloat of float
     // | PBool of bool
 
-type PrimitiveOptions = 
-    | PoInt
-    | FLoat of float
-    // | Bool of bool
-
 // Defined
 
 type DefinedCallableFunction = {

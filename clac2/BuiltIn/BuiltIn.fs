@@ -1,10 +1,15 @@
 module rec Clac2.BuiltIn.BuiltIn
 
-open Clac2.BuiltIn.BuiltInFn
-open Clac2.BuiltIn.Arithmetic
+open Clac2.BuiltIn.Numeric
+open Clac2.BuiltIn.Boolean
 
 let allFunctions =
     Array.concat [
-        arithmeticFuncs
+        intFuncsOf2
+        intFuncsOf1
+        floatFuncsOf2
+        floatFuncsOf1
+        boolFuncsOf2
+        equalityFuncs
+        inequalityFuncs
     ]
-    |> Array.map BuiltInFn.initThroughAdapter

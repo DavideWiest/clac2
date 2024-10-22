@@ -1,4 +1,4 @@
-module rec Clac2.BuiltIn.Arithmetic
+module rec Clac2.BuiltIn.Numeric
 
 open FSharp.Core.Result
 open Clac2.Core.Utils
@@ -14,7 +14,7 @@ let toIntArray defVals =
     |> Result.combineToArray 
     |> bind (Array.map Primitive.toInt >> Result.combineToArray)
 
-let arithmeticFuncs = 
+let intArithmeticFuncs = 
     [|
         ("add", Prefix, (+))
         ("subtract", Prefix, (-))
@@ -38,3 +38,37 @@ let arithmeticFuncs =
             reconversionFn = PInt >> DefinedPrimitive
         }
     )
+    |> Array.map BuiltInFn.initThroughAdapter
+
+let toFloatArray defVals = 
+    defVals 
+    |> Array.map DefinedValue.toPrimitive 
+    |> Result.combineToArray 
+    |> bind (Array.map Primitive.toFloat >> Result.combineToArray)
+
+
+let floatArithmeticFuncs = 
+    [|
+        ("addf", Prefix, (+))
+        ("subtractf", Prefix, (-))
+        ("mulf", Prefix, (*))
+        ("divf", Prefix, (/))
+        ("powf", Prefix, (fun a b -> a ** b))
+        ("+f", Infix, (+))
+        ("-f", Infix, (-))
+        ("*f", Infix, (*))
+        ("/f", Infix, (/))
+        ("^f", Infix, (fun a b -> a ** b))
+    |]
+    |> Array.map (fun (name, fix, f: float -> float -> float) -> 
+        {
+            name = name
+            signature = [| Types.TFloat; Types.TFloat; Types.TFloat |]
+            args = [| "f1"; "f2" |]
+            fnOptions = { genericFnOptions with fixation = fix }
+            conversionFn = toFloatArray
+            innerFn = fun input -> Array.reduce f input |> Ok
+            reconversionFn = PFloat >> DefinedPrimitive
+        }
+    )
+    |> Array.map BuiltInFn.initThroughAdapter

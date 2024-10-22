@@ -1,0 +1,2 @@
+
+let not n : bool*2 = nand n n

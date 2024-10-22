@@ -32,7 +32,7 @@ let loadAllFilesInner defCtx mainFileLoc mainFileLines =
         let (mainFileDefCtx, depMap, fileContentsMemo) = dependencyResult
 
         // use mainFileDefCtx, not over depmap, as it does not contain the first one (the main file)
-        let mainFileDefCtx' = ScopeCtx.mergeDefCtx defCtx mainFileDefCtx
+        let mainFileDefCtx' = ScopeCtx.merge defCtx mainFileDefCtx
         let maybeMainFile = 
             parseFullResult mainFileLoc mainFileDefCtx' mainFileLines
             |> map (fun orderedFile -> { maybeLocation = mainFileLoc; content = orderedFile })
@@ -43,7 +43,7 @@ let loadAllFilesInner defCtx mainFileLoc mainFileLines =
             |> Array.filter (fun (loc, _) -> loc.IsSome && loc <> mainFileLoc)
             |> Array.map (fun (k,v) -> k.Value, v)
             |> Array.map (fun (fileLoc, preParsedLines) ->
-                parseFullResult (Some fileLoc) (ScopeCtx.getDefCtxWithStdCtxFromMap defCtx depMap (Some fileLoc)) preParsedLines
+                parseFullResult (Some fileLoc) (ScopeCtx.getWithDependencyMap defCtx depMap (Some fileLoc)) preParsedLines
                 |> map (fun orderedFile -> { location = fileLoc; content = orderedFile })
             )
             |> Result.combineToArray

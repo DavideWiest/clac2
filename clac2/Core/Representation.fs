@@ -31,15 +31,9 @@ module Print =
             printNested nestLevel "Expressions: "
             file.expressions |> Array.iter (freeManipShortened (nestLevel + 1))
 
-    let typeDefShortened nestLevel (t: TypeDefinition) =
-        printNested nestLevel (t.name + ": " + ToString.signature t.signature)
-
-    let printAssignments nestLevel (a: CallableFunction) =
-        printNested nestLevel (a.name + ": " + ToString.signature a.signature)
-        printNested (nestLevel + 1) (ToString.manip a.manip)
-
-    let freeManipShortened nestLevel (fm: FreeManipulation) =
-        printNested (nestLevel + 1) (fm.manip |> ToString.manip)
+    let typeDefShortened nestLevel (t: TypeDefinition) = printNested nestLevel (t.name + ": " + ToString.signature t.signature)
+    let printAssignments nestLevel (a: CallableFunction) = printNested nestLevel (a.name + " = " + ToString.manip a.manip)
+    let freeManipShortened nestLevel (fm: FreeManipulation) = printNested nestLevel (fm.manip |> ToString.manip)
 
     let printFullExc callDir (e: FullExc) =
         let relFilePath path = System.IO.Path.GetRelativePath (callDir,path)
@@ -51,8 +45,7 @@ module Print =
                 printfn "   - %s%s: %s" subFileSubStr subLineSubStr subFileLink
         printfn "%s" e.innerExc.innerExc.message
 
-    let printResult v = 
-        printfn "%A" v
+    let printResult v = printfn "%A" v
 
 module ToString =
     let rec manip (m: Manipulation) =
@@ -85,3 +78,14 @@ module ToString =
         fileSubStr, lineSubStr, fileLink
 
     let fileLocOption maybeFileLoc = maybeFileLoc |> Option.defaultValue ("interactive")
+
+    let definedValue dv =
+        match dv with
+        | DefinedFn _ -> failwith "Internal Error: Functions cannot be converted to stiring"
+        | DefinedPrimitive p -> 
+            match p with
+            | PInt i -> i.ToString()
+            | PFloat f ->
+                let firstStr = f.ToString().Replace(",", ".") // dotnet
+                if firstStr.Contains(".") then firstStr else firstStr + "."
+            | PBool b -> if b then Constants.trueStr else Constants.falseStr

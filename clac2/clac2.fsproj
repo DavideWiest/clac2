@@ -10,13 +10,14 @@
     <Compile Include="Core/Exc/Domain.fs" />
     <Compile Include="Core/Exc/Exceptions.fs" />
     <Compile Include="Core\Input.fs" />
-    <Compile Include="Core/Lang/Primitive.fs" />
     <Compile Include="Core\Lang/Language.fs" />
+    <Compile Include="Core/Lang/Primitive.fs" />
     <Compile Include="Core/Representation.fs" />
     <Compile Include="Core/ProgramUtils.fs" />
     <Compile Include="BuiltIn/Util.fs" />
     <Compile Include="BuiltIn\BuiltInFn.fs" />
-    <Compile Include="BuiltIn/Arithmetic.fs" />
+    <Compile Include="BuiltIn\Numeric.fs" />
+    <Compile Include="BuiltIn\Boolean.fs" />
     <Compile Include="BuiltIn/BuiltIn.fs" />
     <Compile Include="FrontEnd/Util.fs" />
     <Compile Include="FrontEnd/NestedItems.fs" />

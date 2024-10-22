@@ -64,7 +64,6 @@ let ToUnparsedLineInner line =
     if line.StartsWith (Syntax.openModuleKeyword + " ") then
         line.Substring(Syntax.openModuleKeyword.Length) |> UnparsedModuleReference |> Ok
     else if line.StartsWith (Syntax.assignKeyword + " ") then
-        printfn "Parsing line: %s" (line.Substring(Syntax.assignKeyword.Length))
         line.Substring(Syntax.assignKeyword.Length) |> ToUnparsedCallableFunction |> map UnparsedAssignment
     else if line.StartsWith (Syntax.defineTypeKeywoerd + " ") then
         line.Substring(Syntax.defineTypeKeywoerd.Length) |> ToUnparsedTypeDefinition |> map UnparsedTypeDefinition
@@ -91,12 +90,12 @@ let ToUnparsedCallableFunction line =
 
     let nameAndArgs = parts[..firstColonI-1]
     let name , args = nameAndArgs[0], nameAndArgs[1..]
-    if Syntax.nameIsInvalid name then Simple.toExcResult ("Invalid function name: " + name) else
+    if nameIsInvalid name then Simple.toExcResult ("Invalid function name: " + name) else
 
     extractFullSignature parts[firstColonI+1..firstEqualI-1]
     |> bind (fun (signatureParts: NestedItemArray<string>) ->        
         if (signatureParts.Length) - 1 <> (args |> Array.length) then Simple.toExcResult (sprintf "Expected %i arguments, got %i. Signature: %A" (signatureParts.Length - 1) (args |> Array.length) signatureParts ) else
-        if args |> Array.map Syntax.nameIsInvalid |> Array.exists id then Simple.toExcResult "Invalid argument name." else
+        if args |> Array.map nameIsInvalid |> Array.exists id then Simple.toExcResult "Invalid argument name." else
 
         parts[firstEqualI+1..] |> String.concat " " |> ToUnparsedManipulation
         |> map (fun fnBody ->
@@ -159,7 +158,7 @@ let ToUnparsedTypeDefinition line =
     if maybeFirstColon.IsNone then Simple.toExcResult "Type definition missing a colon separated by spaces." else
 
     let name = parts[0]
-    if Syntax.nameIsInvalid name then Simple.toExcResult ("Invalid type name: " + name) else
+    if nameIsInvalid name then Simple.toExcResult ("Invalid type name: " + name) else
 
     extractFullSignature parts[maybeFirstColon.Value+1..]
     |> map (fun signatureParts -> { name = name; unparsedSignature = signatureParts })

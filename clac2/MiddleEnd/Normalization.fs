@@ -27,15 +27,17 @@ module ArgumentPropagation =
         applyManipulationApplicationFromManipParent manipParent fnBuilder
 
     // argument propagation is not supported for curried functions either
-    let rec nestArgumentPropagationsManip fixationMap functionSignatureMap (m: Manipulation) : Manipulation =
+    let nestArgumentPropagationsManip fixationMap functionSignatureMap (m: Manipulation) : Manipulation =
         let propagate (m: Manipulation) sigLen = if m.Length - 1 <= sigLen - 1 then m else Array.append m[..sigLen-2] [| Manipulation m[sigLen-1..] |]
+
 
         if m.Length = 1 then m
         // if it is in fixationMap, it is also in functionSignatureMap (the reverse is not true - arguments)
-        elif fixationMapLookup fixationMap m[0] = Some Prefix then 
-            propagate m (functionSignatureMapLookup functionSignatureMap m[0]).Value.Length
+        // infix first, or variables (which are prefix by nature) will be taken and will lead to an infinite recursion
         elif fixationMapLookup fixationMap m[1] = Some Infix then 
             propagate m (functionSignatureMapLookup functionSignatureMap m[1]).Value.Length
+        elif fixationMapLookup fixationMap m[0] = Some Prefix then
+            propagate m (functionSignatureMapLookup functionSignatureMap m[0]).Value.Length
         // propagation is not supported for postfix functions and arguments
         else m
 

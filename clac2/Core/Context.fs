@@ -13,9 +13,9 @@ type fileDependencyMap = Map<string option, ScopeCtx>
 module ScopeCtx =
     let init types functions = { types = types; functions = functions |> Array.map (fun x -> x.name) }
 
-    let getDefCtxWithStdCtxFromMap defCtx (depMap: fileDependencyMap) fileLoc = mergeDefCtx defCtx depMap[fileLoc]
+    let getWithDependencyMap defCtx (depMap: fileDependencyMap) fileLoc = merge defCtx depMap[fileLoc]
 
-    let mergeDefCtx defCtx1 defCtx2 =
+    let merge defCtx1 defCtx2 =
         {
             types = Array.append defCtx1.types defCtx2.types
             functions = Array.append defCtx1.functions defCtx2.functions

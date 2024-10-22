@@ -107,7 +107,7 @@ let rec checkManipulation typeCheckingCtx m line expectedOutputType =
             if m.Length > 1 then Some (Intermediate.ExcFPPure ("Primitive " + f + " used as function.") line) else
 
             let primitiveType = Primitive.typeOfPrimitive maybePrim.Value
-            if expectedOutputType <> AnyOut && expectedOutputType <> ExpectedType primitiveType then Some (Intermediate.ExcFPPure (sprintf "Expected output type for %s is %A, received %A" f expectedOutputType primitiveType) line) else None
+            if expectedOutputType <> AnyOut && expectedOutputType <> ExpectedType (BaseFnType primitiveType) then Some (Intermediate.ExcFPPure (sprintf "Expected output type for %s is %A, received %A" f expectedOutputType primitiveType) line) else None
         else
 
         if not (typeCheckingCtx.signatures.ContainsKey f) then Some (Intermediate.ExcWithoutLine (Simple.Exc ("Internal Error: customFnsMap does not contain function " + f + ". It probably was not registered in the front end."))) else
@@ -119,7 +119,7 @@ let rec checkManipulation typeCheckingCtx m line expectedOutputType =
         let inputSignature, outputSignature = signature[..inputIStop], signature[inputIStop+1..]
         let preparedOutputSignature = if outputSignature.Length = 1 then outputSignature[0] else Function outputSignature
 
-        if expectedOutputType <> AnyOut && expectedOutputType <> ExpectedType preparedOutputSignature then Some (Intermediate.ExcFPPure (sprintf "Expected output type for %s is %A, received %A" f expectedOutputType outputSignature) line) else
+        if expectedOutputType <> AnyOut && expectedOutputType <> ExpectedType preparedOutputSignature then Some (Intermediate.ExcFPPure (sprintf "Expected type for symbol (here %s) is %A, received %A" f expectedOutputType outputSignature) line) else
         
         typesMatch inputSignature m[1..]
     | Manipulation m' -> 

@@ -53,6 +53,12 @@ let postfix postfixWithMoreArgs a b c : int*4 = mul a subtract b c
 
 -- fixation in combination with argument propagation
 1 * 2 * 3 * 4 * 5
+
+let a : int = 1
+let b : int = 2
+let c : int = 3
+a + b + c
+
 -- fixation and argument propagation and recursive parsing
 1 * 2 * (3 + 4) * 5
 

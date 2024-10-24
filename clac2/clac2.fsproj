@@ -4,13 +4,32 @@
     <TargetFramework>net8.0</TargetFramework>
   </PropertyGroup>
   <ItemGroup>
-    <Compile Include="Utilities.fs" />
-    <Compile Include="Domain.fs" />
-    <Compile Include="DomainUtilities.fs" />
-    <Compile Include="Language.fs" />
-    <Compile Include="FrontEnd.fs" />
-    <Compile Include="MiddleEnd.fs" />
-    <Compile Include="Interpreter.fs" />
+    <Compile Include="Core\Utils.fs" />
+    <Compile Include="Core/Domain.fs" />
+    <Compile Include="Core\Context.fs" />
+    <Compile Include="Core/Exc/Domain.fs" />
+    <Compile Include="Core/Exc/Exceptions.fs" />
+    <Compile Include="Core\Input.fs" />
+    <Compile Include="Core\Lang/Language.fs" />
+    <Compile Include="Core/Lang/Primitive.fs" />
+    <Compile Include="Core/Representation.fs" />
+    <Compile Include="Core/ProgramUtils.fs" />
+    <Compile Include="BuiltIn/Util.fs" />
+    <Compile Include="BuiltIn\BuiltInFn.fs" />
+    <Compile Include="BuiltIn\Numeric.fs" />
+    <Compile Include="BuiltIn\Boolean.fs" />
+    <Compile Include="BuiltIn/BuiltIn.fs" />
+    <Compile Include="FrontEnd/Util.fs" />
+    <Compile Include="FrontEnd/NestedItems.fs" />
+    <Compile Include="FrontEnd/Domain.fs" />
+    <Compile Include="FrontEnd/Lexing.fs" />
+    <Compile Include="FrontEnd/FrontEnd.fs" />
+    <Compile Include="MiddleEnd/MiddleEndUtils.fs" />
+    <Compile Include="MiddleEnd/Normalization.fs" />
+    <Compile Include="MiddleEnd\TypeCheckingCtx.fs" />
+    <Compile Include="MiddleEnd\TypeChecking.fs" />
+    <Compile Include="Interpreter/EvalCtx.fs" />
+    <Compile Include="Interpreter/Interpreter.fs" />
     <Compile Include="Modularization.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>

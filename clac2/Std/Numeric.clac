@@ -1,7 +1,12 @@
 
+-- this is accurate enough
+let pi : int = 3
+let e : int = 3
 
-let square x : int*2 = mul x x
-let cube x : int*2 = mul x (mul x x) -- mul x mul x x
+let piUnnecessarilyAccurate : float = 3.14
+let eUnnecessarilyAccurate : float = 2.71
 
+let square x : int*2 = x * x
+let cube x : int*2 = x * x * x
 
--- let factorial n : int int = ifelse (= n 1) (mul n (factorial (subtract n 1))) 1
+-- let factorial n : int int = ifelse (eq n 1) 1 (mul n (factorial (subtract n 1)))

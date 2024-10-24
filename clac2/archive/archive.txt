@@ -1,0 +1,448 @@
+interpreter: 
+
+let buildArgs evalCtx (argsBefore: DefinedValue array) (signature: FnType array) : FullClacResult<DefinedValue array> =
+        if argsBefore.Length = signature.Length - 1 then argsBefore |> Ok else
+        
+        argsBefore[signature.Length - 2]
+        |> definedValueFnToReference evalCtx
+        |> bind (fun startFn -> eval evalCtx startFn argsBefore[signature.Length - 1..])
+        |> map (fun lastArg -> Array.concat [argsBefore[0..signature.Length - 3]; [| lastArg |]])
+
+middle end: checkManipulation
+
+            // prevent Array.last from throwing exception
+            if inputSignature.Length = 0 then Some (Intermediate.ExcFPPure ("Too many arguments for function " + f) line) else
+
+            // check the other types
+            let typesUntilLastMatch = typesMatch inputSignature[..inputSignature.Length-2] typesOfArgs[..typesOfArgs.Length-2] f
+            if typesUntilLastMatch |> Option.isSome then typesUntilLastMatch |> Option.map (Intermediate.ExcMaybeLine line) else
+
+            // if too many arguments exist, try to pass them into the last argument
+            let lastArg = args |> Array.last
+
+            match lastArg with
+            | Fn f' -> 
+                let lastInputType = inputSignature |> Array.last
+                let outputSignature' = functionSignatureMap[f'] |> Array.last
+
+                if lastInputType <> outputSignature' then Some(Intermediate.ExcFPPure (sprintf "Argument type mismatch: Expected %A, but got %A. Trying to push superfluous arguments of function %s to last element." lastInputType outputSignature' f) line) else
+
+                checkManipulation customFnsMap functionSignatureMap m[inputSignature.Length..]
+
+middle end: entry Fn
+
+        let customFnsMap = 
+            program.secondaryFiles
+            |> Array.map (fun f -> f.content.assignments)
+            |> Array.concat
+            |> Array.append file.assignments
+            |> Array.map (fun x -> x.name, x) 
+            |> Map.ofArray
+
+middle end: checkManipulation match m[0] with Fn ...
+
+            let innerManipCorrect = checkManipulation typeCheckingCtx m' line
+            if innerManipCorrect.IsSome then innerManipCorrect else
+            if m.Length = 1 then None else
+            
+            // match signature
+            match ReferenceToFnType typeCheckingCtx line m'[0] with
+            | Error e -> Some (e)
+            | Ok(Function fs) -> 
+                let remainingSignature = fs[..fs.Length-2]
+
+                if remainingSignature.Length <> m.Length - 1 then Some (Intermediate.ExcFPPure ("Invalid number of arguments for: " + (manipulationToString m')) line) else
+                
+                typesMatch remainingSignature m[1..] f line |> Option.map (Intermediate.Exc line)
+            | Ok(BaseFnType t) -> Some (Intermediate.ExcFPPure ("Function " + (manipulationToString m') + " received too many arguments.") line)
+
+middle end:
+
+    let ReferenceToFnType (typeCheckingCtx: TypeCheckingCtx) line (x: Reference) : IntermediateClacResult<FnType> =
+        // variables are treated as functions in the reference type, but not in the fntype type
+        let returnSig (s: Signature) = if s.Length = 1 then Ok s[0] else Ok (Function s)
+
+        match x with
+        | Fn f -> 
+            if Primitive.isPrim f then Ok (getValidatedPrimitiveType f) else
+            returnSig typeCheckingCtx.signatures[f]
+        | Manipulation m ->
+            match checkManipulation typeCheckingCtx m line with
+            | Some e -> Error e
+            | None -> ReferenceToFnType typeCheckingCtx line m[0]
+
+middle end old typesmatch:
+
+        let rec typesMatch (inputSignature: FnType array) args f : Intermediate.Exception option =
+            Array.fold (fun acc (signaturePart: FnType, arg) -> 
+                acc
+                |> Option.orElse (
+                    match arg with
+                    | Fn f' ->
+                        if Primitive.isPrim f' then 
+                            // check is primitive type matches signaturepart
+                        else
+                        let argSignature = Signature.retrieve typeCheckingCtx f'
+                        if Signature.signaturesMatch signaturePart (Function argSignature) then None else Some (Intermediate.ExcFPPure (sprintf "Argument type mismatch: Expected %A, received %A for function %s." signaturePart argSignature f) line) 
+                    // fix this: it leads to infinite recursion
+                    | Manipulation m' -> 
+                    
+                        if m'.Length = 1 
+                        then if m'.[0] =  then None else Some (Intermediate.ExcFPPure (sprintf "Argument type mismatch: Expected %A, received %A." signaturePart m'.[0]) line)
+                        else checkManipulation typeCheckingCtx m' line (ExpectedType signaturePart)
+                        //match signaturePart with
+                        //| BaseFnType s ->
+                        //    // fix this 
+                        //    // factorial (subtract (n 1)) does not work
+                        //    // mabe a recursive call?
+                        //    // constants/variables are treated as functions with no arguments
+                        //    if m'.Length <> 1 then Some (Intermediate.ExcFPPure ("Expected constant (function without arguments), but received function.") line) else
+                        //    if m'[0] <> Fn s then Some (Intermediate.ExcFPPure (sprintf "Expected constant of type %s, received %A." s m'[0]) line) else 
+                        //    None
+                        //| Function fs -> 
+                        //    checkManipulation typeCheckingCtx m' line (ExpectedType signaturePart) 
+                        //    |> Option.orElse(typesMatch fs m' f)
+                )
+            ) None (Array.zip inputSignature args)
+
+middle end, signatures:
+
+        let rec signaturesMatch (expected: FnType) (actual: FnType) =
+            match expected, actual with
+            | BaseFnType s1, BaseFnType s2 -> s1 = s2
+            | Function fs1, Function fs2 -> fs1 |> Array.zip fs2 |> Array.forall (fun (a, b) -> signaturesMatch a b)
+            | Function fs1, BaseFnType _ -> fs1.Length = 1 && signaturesMatch fs1.[0] actual
+            | BaseFnType _, Function fs2 -> fs2.Length = 1 && signaturesMatch expected fs2.[0]
+
+interpreter: eval case of manipulation as startFn:
+
+printfn "--- eval manipulation %A with %A ---" m args
+
+        evaluateOne evalCtx (EvalCtx.getCurrentLoc evalCtx) m Map.empty
+        |> bind (fun newStartFnValue -> 
+            match newStartFnValue with 
+            | DefinedFn (name, fn) -> 
+                let newStartFn = DefinedStartFn (name, fn)
+                eval evalCtx newStartFn args
+            | DefinedPrimitive p -> EvalCtx.FullExcFromEvalCtx ("Primitive " + p.ToString() + " used as function.") evalCtx
+        ) 
+
+middle end: checkManipulation first case WITH argument propagation logic
+
+        match m[0] with
+        | Fn f ->
+            if Primitive.isPrim f then
+                if m.Length > 1 then Some (Intermediate.ExcFPPure ("Primitive " + f + " used as function.") line) else
+
+                let primitiveType = getValidatedPrimitiveType f
+                if expectedOutputType <> AnyOut && expectedOutputType <> ExpectedType primitiveType then Some (Intermediate.ExcFPPure (sprintf "Expected output type for %s is %A, received %A" f expectedOutputType primitiveType) line) else None
+            else
+
+            if not (typeCheckingCtx.signatures.ContainsKey f) then Some (Intermediate.ExcWithoutLine (GenExc ("Internal Error: customFnsMap does not contain function " + f + ". It probably was not registered in the front end."))) else
+
+            let signature = typeCheckingCtx.signatures[f]
+            let containsArgumentPropagation = m.Length - 1 > signature.Length - 1 
+
+            printfn "m: %A" m
+            printfn "signature: %A" signature
+            printfn "containsArgumentPropagation: %A" containsArgumentPropagation
+
+            let maybeArgPropagrationError = if containsArgumentPropagation then checkManipulation typeCheckingCtx m[signature.Length - 1..] line (ExpectedType signature[signature.Length - 1]) else None
+            if maybeArgPropagrationError.IsSome then maybeArgPropagrationError else
+
+            // if the manipulation contains an argument propagation, the full signature is used
+            // if equal or less, the manipulation determines how many parts of the signature are used
+            // this might not be right, but i'll leave it for now
+            let inputIStop = if containsArgumentPropagation then signature.Length - 2 else m.Length - 2
+            let inputSignature, outputSignature = signature[..inputIStop], signature[inputIStop+1..]
+            let preparedOutputSignature = if outputSignature.Length = 1 then outputSignature.[0] else Function outputSignature
+
+            if expectedOutputType <> AnyOut && expectedOutputType <> ExpectedType preparedOutputSignature then Some (Intermediate.ExcFPPure (sprintf "Expected output type for %s is %A, received %A" f expectedOutputType outputSignature) line) else
+            
+            // skip the last argument if it is an argument propagation
+            let inputSignatureLeftToCheck = if containsArgumentPropagation then inputSignature[..inputSignature.Length - 2] else inputSignature
+            typesMatch inputSignatureLeftToCheck m[1..inputSignatureLeftToCheck.Length]
+
+interpreter: eval WITH argument propagation logic, incomplete and/or false
+
+        if Primitive.isPrim f then 
+            if args.Length = 0 then f |> readPrimitive |> DefinedPrimitive |> Ok else EvalCtx.FullExcFromEvalCtx ("Primitive " + f + " used as function (at interpreter).") evalCtx
+        else
+            if evalCtx.stdFunctionsMap.ContainsKey f then evalCtx.stdFunctionsMap[f].DefinedFn args |> toGenericResult |> EvalCtx.toFullExcFromEvalCtx evalCtx else
+            if evalCtx.customAssignmentMap.ContainsKey f |> not then EvalCtx.FullExcFromEvalCtx ("Function " + f + " not found (at interpreter)") evalCtx else
+
+            let fn = evalCtx.customAssignmentMap[f]
+
+            printfn "f: %s" f
+            printfn "args: %A" args
+            printfn "signature: %A" fn.signature
+
+            // wrong - may even be at the wrong place
+
+            if args.Length > fn.signature.Length - 1 then 
+                match args[fn.signature.Length - 1] with
+                | DefinedFn (propFnName, propFn) ->
+                    eval evalCtx (Fn propFnName) args[fn.signature.Length..]
+                    |> bind (fun x -> 
+                        let newArgs = args.[0..fn.signature.Length - 2] |> Array.append [| x |]
+                        // repeat with propagation term substituted
+                        eval evalCtx (Fn f) newArgs
+                    )
+                | _ -> EvalCtx.FullExcFromEvalCtx ("Internal Error: Unable to perform argument propagation (at interpreter).") evalCtx
+            else  
+
+            let substitutions = args |> Array.zip fn.args |> Map.ofArray
+
+            evaluateOne evalCtx fn.loc fn.fn substitutions
+
+----------------- interpreter: core functions with SubstitutionResult 
+
+let evaluateOne evalCtx loc manipulation substitutions  =
+    printfn "evaluateOne for %A" manipulation
+    printfn "- subs: %A" substitutions
+    let newEvalCtx = { evalCtx with locTrace = loc :: evalCtx.locTrace }
+    let maybeSubstitutedManipulation = substituteMany newEvalCtx substitutions manipulation
+    printfn "- subsManip: %A" maybeSubstitutedManipulation
+
+    // error here
+    // eval has to be called even if m[0] is defined
+
+    maybeSubstitutedManipulation
+    |> bind (fun (substitutedManipulation: SubsitutionResult array) ->
+        let definedManipulationTail = convertToDefinedManipulation newEvalCtx substitutedManipulation[1..]
+        match substitutedManipulation[0] with
+        | Ref f -> definedManipulationTail |> bind (eval newEvalCtx f)
+        | Val (DefinedPrimitive p) -> if substitutedManipulation.Length = 1 then p |> DefinedPrimitive |> Ok else EvalCtx.FullExcFromEvalCtx ("Primitive " + p.ToString() + " used as function (at interpreter).") newEvalCtx
+        | Val (DefinedFn (name, fn)) -> definedManipulationTail |> bind (fun args -> fn args |> toGenericResult |> EvalCtx.toFullExcFromEvalCtx newEvalCtx)
+    )
+
+let convertToDefinedManipulation evalCtx substitutedManip : FullClacResult<DefinedValue array> =
+    substitutedManip
+    |> Array.fold (fun acc r ->
+        acc
+        |> bind (fun accArray ->
+            match r with
+            | Val v -> (Array.append accArray [|v|]) |> Ok
+            | Ref r -> Error (GenExc ("Reference " + r.ToString() + " could not be substituted (at interpreter).")) |> toIntermediateResult evalCtx.locTrace[0].lineLocation |> toFullResult evalCtx.locTrace[0].fileLocation // f# type interference does not work any other way correctly
+        )
+    ) (Ok [||])
+
+let substituteMany evalCtx (substitutions: Map<string, DefinedValue>) m = m |> Array.map (substituteOne evalCtx substitutions) |> Result.combineToArray
+
+type SubsitutionResult = Ref of Reference | Val of DefinedValue
+
+let rec substituteOne evalCtx (substitutions: Map<string, DefinedValue>) x : FullClacResult<SubsitutionResult> =
+    match x with
+    | Fn f -> 
+        printfn "substituteOne %s with %A" f substitutions
+
+        if Primitive.isPrim f then f |> readPrimitive |> DefinedPrimitive |> Val |> Ok else
+        // substitutions first to override globally defined functions
+        if substitutions.ContainsKey f then substitutions[f] |> Val |> Ok else
+        // do not pass down defined arguments as substitutions
+        if evalCtx.customAssignmentMap.ContainsKey f then evaluateOne evalCtx evalCtx.customAssignmentMap[f].loc evalCtx.customAssignmentMap[f].fn Map.empty |> map Val else
+        if evalCtx.stdFunctionsMap.ContainsKey f then toDefinedFn evalCtx f |> Val |> Ok else
+        
+        Ref x |> Ok
+    | Manipulation m -> evaluateOne evalCtx (EvalCtx.getCurrentLoc evalCtx) m substitutions |> map Val
+
+----- interpreter: old eval function
+
+let rec eval evalCtx (startFn: Reference) (substitutions: Map<string, DefinedValue>) (args: DefinedValue array) : FullClacResult<DefinedValue> =
+    printfn "--- eval %A with %A ---" startFn args
+    match startFn with
+    | Fn f ->
+
+        if Primitive.isPrim f then f |> readPrimitive |> DefinedPrimitive |> Ok else
+
+        if substitutions.ContainsKey f then substitutions[f] |> Ok else
+        if evalCtx.stdFunctionsMap.ContainsKey f then evalCtx.stdFunctionsMap[f].DefinedFn args |> toGenericResult |> EvalCtx.toFullExcFromEvalCtx evalCtx else
+
+        let fn = evalCtx.customAssignmentMap[f]
+        let substitutions = args |> Array.zip fn.args |> Map.ofArray
+
+        evaluateOne evalCtx fn.loc fn.fn substitutions
+    | Manipulation m -> 
+        evaluateOne evalCtx (EvalCtx.getCurrentLoc evalCtx) m Map.empty
+        |> bind (fun x -> 
+            match x with
+            | DefinedFn (name, fn) -> fn args |> toGenericResult |> EvalCtx.toFullExcFromEvalCtx evalCtx
+            | DefinedPrimitive _ -> Ok x
+        )
+
+let toDefinedFn evalCtx f = DefinedFn (evalCtx.stdFunctionsMap[f].name, evalCtx.stdFunctionsMap[f].DefinedFn)
+
+------ interpreter: intermediate version
+
+let evaluateOne evalCtx loc manipulation substitutions  =
+    printfn "evaluateOne for %A" manipulation
+    printfn "- subs: %A" substitutions
+    let newEvalCtx = { evalCtx with locTrace = loc :: evalCtx.locTrace }
+
+    let substitutedManipulations = manipulation |> Array.map (betaSubstitute newEvalCtx substitutions) |> Result.combineToArray
+
+    printfn "- subsManip: %A" substitutedManipulations
+
+    // substitute args somewhere here
+
+    substitutedManipulations |> bind (fun definedManip ->
+        if definedManip.Length = 0 then Ok Unit
+        elif definedManip.Length = 1 then Ok definedManip[0] else
+        
+        match definedManip[0] with
+        | DefinedFn fn -> fn.definedManip definedManip[1..] |> EvalCtx.toFullExcFromEvalCtx evalCtx
+        | DefinedPrimitive _ | Unit -> EvalCtx.FullExcFromEvalCtx evalCtx "Unit or primitive used as function."
+    )
+
+let rec betaSubstitute evalCtx (substitutions: Map<string, DefinedValue>) x : FullClacResult<DefinedValue> =
+    match x with
+    | Fn f -> 
+        printfn "findDefinedValue %s with %A" f substitutions
+
+        if Primitive.isPrim f then f |> readPrimitive |> DefinedPrimitive |> Ok
+        elif substitutions.ContainsKey f then substitutions[f] |> Ok 
+        elif evalCtx.customAssignmentMap.ContainsKey f then evaluateOne evalCtx evalCtx.customAssignmentMap[f].loc evalCtx.customAssignmentMap[f].manip Map.empty
+        elif evalCtx.stdFunctionsMap.ContainsKey f then evalCtx.stdFunctionsMap[f] |> DefinedFn |> Ok else
+        
+        EvalCtx.FullExcFromEvalCtx evalCtx ("Function not found (at evaluation during substitution): " + f)
+    | Manipulation m -> evaluateOne evalCtx (EvalCtx.getCurrentLoc evalCtx) m substitutions
+
+´----- interpreter: version 3, shit
+
+
+let evaluateOne evalCtx loc manipulation  =
+    let newEvalCtx = { evalCtx with locTrace = loc :: evalCtx.locTrace }
+
+    manipulation
+
+type substitutedResult = 
+    | DefinedCallableFn of CallableFunction 
+    | BuiltInFn of BuiltInFn
+    | DefinedPrimitive of Primitive
+
+let rec substituteFunctions evalCtx (x: Manipulation) : substitutedResult * Reference array =
+    match x[0] with
+    | Fn f -> 
+        if Primitive.isPrim f then f |> readPrimitive |> DefinedPrimitive, [||] else
+        if evalCtx.stdFunctionsMap.ContainsKey f then 
+            (BuiltInFn evalCtx.stdFunctionsMap[f]), x[1..]
+        else
+            let fn = evalCtx.customAssignmentMap[f]
+            
+            DefinedCallableFn { fn with manip = substituteFunctions evalCtx fn.manip }, x[1..]
+
+    | Manipulation m -> substituteFunctions evalCtx (Array.append m x[1..])
+
+let rec substituteArguments evalCtx (fnWithArgs: DefinedCallableFunction * Reference array) =
+    let fn, args = fnWithArgs
+
+    fn.manip 
+
+let rec alphaReduce evalCtx (x: DefinedCallableFunction) (args: Reference array) =
+    if args.Length = 0 then f |> readPrimitive |> DefinedPrimitive |> Ok
+    
+    args
+    |> Array.map refernceToManipulation
+    |> Array.map (alphaReduce evalCtx)
+    |> evalCtx.stdFunctionsMap[f].definedManip 
+    |> EvalCtx.toFullExcFromEvalCtx evalCtx
+
+let refernceToManipulation (x: Reference) = 
+    match x with
+    | Fn f -> [| Fn f |]
+    | Manipulation m -> m
+
+---- version 3 types
+
+type DefinedValue =
+    | DefinedPrimitive of Primitive
+    | DefinedFn of CallableFunction
+    | Unit
+
+type BuiltInFn = {
+    name: string
+    signature: FnType array
+    args: string array
+    definedManip: DefinedManipulation
+}
+
+type DefinedManipulation = DefinedValue array -> Result<DefinedValue, string>
+
+----- front end representation: line to string
+
+let lineToString (line: Line) =
+    let exprToString m = m |> Array.map string |> String.concat " "
+
+    match line with
+    | Expression m -> exprToString m.manip
+    | Assignment f -> 
+        let args = (f.args |> String.concat " ")
+        let signature = (f.signature |> Array.map (fun x -> x.ToString()) |> String.concat " ")
+        let fnBody = exprToString f.manip
+
+        sprintf "let %s %s : %s = %s" f.name args signature fnBody
+    | TypeDefinition t -> 
+        let signature = (t.signature |> Array.map (fun x -> x.ToString()) |> String.concat " ")
+
+        sprintf "type %s : %s" t.name signature
+    | ModuleReference m -> sprintf "open %s" m
+    | ModuleDeclaration m -> sprintf "module %s" m
+
+----- builtin util: to int function and adapter
+
+    let rec fnTypeToTAdapter po name (f: int array -> int) (input: DefinedValue array) nArgs  =
+        if input.Length > nArgs then Error ("Internal Error: Wrong number of arguments for fnTypeToIntAdapter for builtin function " + name) else
+
+        if input.Length < nArgs then 
+            Ok (DefinedFn (name + sprintf " (%i/%i args)" input.Length nArgs, fun args -> fnTypeToTAdapter po name f (Array.append input args) nArgs))
+        else
+
+        input 
+        |> Array.map (Conversion.definedValueToT po) 
+        |> Result.combineToArray
+        |> bind (f >> PInt >> DefinedPrimitive >> Ok)
+
+    let definedValueToT po v = definedValueToIntInner po v 0
+
+    let rec definedValueToIntInner po v (recursionCount: int) =
+        // prevent infinite recursion while allowing users to pass nested functions
+        if recursionCount > 10 then Error (sprintf "Recursion limit reached while trying to convert argument to int for: %A" v) else
+
+        match v with
+            | DefinedPrimitive dp -> getPrimOption po dp
+            | DefinedFn (name, fn) ->
+                match fn [| |] with
+                | Ok(v) -> definedValueToIntInner po v (recursionCount + 1)
+                | Error e -> Error e
+
+    let getPrimOption po dp  =
+        match po, dp with
+        | PoInt, PInt i -> Ok i
+        | PoFloat, PFloat f -> Ok f
+        | _ -> Error (sprintf "Expected %A, got %A" po dp)
+
+----- builtin util: toprimitive
+
+let toPrimitiveArray defVals = defVals |> Array.map toPrimitive |> Result.combineToArray
+
+let rec toPrimitive defVal = 
+    match defVal with
+    | DefinedPrimitive p -> p |> Ok
+    | DefinedFn (_, f) -> f [| |] |> bind toPrimitive
+
+----- nested items: apply to items (array)
+
+let applyToItems f nestedItems  = nestedItems |> Array.map (fun x -> applyToInnerItems f x)
+
+----- frontend: module Declaration parsing
+
+let parseModuleDeclaration loc line =
+    match loc.fileLocation with
+    | None -> Simple.toExcResult "Module declaration outside of file."
+    | Some fileLoc -> 
+        let dir = System.IO.Path.GetDirectoryName fileLoc
+        
+        // for now, module and files names must match
+        if Files.toQualifiedFileLoc dir line <> fileLoc then Simple.toExcResult "Module declaration does not match file location." else
+
+        line |> Files.toQualifiedFileLoc dir |> ModuleDeclaration |> Ok

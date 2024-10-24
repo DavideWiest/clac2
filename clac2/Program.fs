@@ -1,33 +1,37 @@
 ﻿
-open Clac2.Utilities
-open Clac2.DomainUtilities
-open Clac2.Modularization
-open Clac2.Interpreter
+open System
 open FSharp.Core.Result
-open Clac2.Language
+open Clac2.Core.Utils
+open Clac2.Core.Domain
+open Clac2.Core.Context
+open Clac2.Core.Representation
+open Clac2.Core.Input
+open Clac2.Core.Lang.Language
+open Clac2.BuiltIn.BuiltIn
+open Clac2.Core.ProgramUtils
+open Clac2.MiddleEnd.Normalization
+open Clac2.MiddleEnd.TypeChecker
+open Clac2.Interpreter.Interpreter
+open Clac2.Modularization
 
-// stdCtx for front/middle end and back end should be 2 different types
+let executeProgram scopeCtx callableCtx input =
+    input
+    |> loadAndParseFiles scopeCtx
+    |> map (fun (program, depMap) -> applyNormalizationPipeline callableCtx program, depMap)
+    |> bind (validateProgramTypes callableCtx scopeCtx)
+    // |> map (passAndReturn Print.program)
+    |> bind (evaluateFile callableCtx >> Result.combineToArray)
+    //|> map (passAndReturn (Array.iter Print.printResult))
+    |> mapError (Print.printFullExc Environment.CurrentDirectory)
 
 [<EntryPoint>]
 let main args =
-    let baseFuncsCombined = Array.concat [BuildIn.arithmeticFuncs; BuildIn.baseVars]
-    let stdCtx = StandardContext.buildStandardContext baseFuncsCombined Types.baseTypes 
+    let callableCtx = CallableCtx.init allFunctions
+    let scopeCtx = ScopeCtx.init Types.baseTypes allFunctions
 
-    args
-    |> getInput
-    |> FileLoading.loadAndParseFiles stdCtx
-    |> bind (TypeChecking.validateProgramTypes stdCtx)
-    |> map (passAndReturn printProgram)
-    |> bind (fun program -> program |> evaluateFile stdCtx |> combineResultsToArray)
-    |> (fun x ->
-        match x with 
-        | Ok results ->
-            printfn "Evaluated:\n"
-            results |> Array.iter (printfn "%A")
-
-        | Error e -> printFullExc System.Environment.CurrentDirectory e
-        
-        x
-    )
-    |> resultToReturnCode
-
+    match getInput args with
+    | Interactive s -> consoleLoop executeProgram scopeCtx callableCtx s
+    | File s -> 
+        File s
+        |> executeProgram scopeCtx callableCtx
+        |> resultToReturnCode

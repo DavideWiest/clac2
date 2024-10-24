@@ -1,3 +1,5 @@
+-- note: use "open ../Std/Numeric" when testing functions with "id" in them
+
 -- check parsing and assignment syntax validation
 let y : int = 5
 y
@@ -17,14 +19,16 @@ type intTwice : int int
 type basicArithmetic : int int int
 type basicArithmetic2 : int2 int2 int2
 
--- types that should fail
+-- recursive type definition that should fail
 -- type int5 : int6
 -- type int6 : int5
 -- type int7 : int8
+-- others
+-- type int3 : int4
 
--- Overloaded forwarding
+-- Argument propagation
 add 1 add 2 3
-let plus3 a b c : int int int int = add a add b c
+let plus3 a b c : int*4 = add a add b c
 plus3 1 2 3
 
 -- manipulations that should fail
@@ -32,9 +36,31 @@ plus3 1 2 3
 -- add id id
 
 -- check for duplication (should fail)
--- let id x : int int = x
+-- let y : int = 2
 
--- passing of arguments
+-- currying
 let applyFive f : (int int) int = f 5
-let add2 b : int int = add 2 b
+let add2 : (int int) = add 2
 applyFive add2
+
+-- fixation
+let infix addButInfix a b : int*3 = add a b
+1 addButInfix 2
+let postfix subtractButPostfix a b : int*3 = subtract a b
+1 2 subtractButPostfix
+let postfix postfixWithMoreArgs a b c : int*4 = mul a subtract b c
+4 5 2 postfixWithMoreArgs -- 12
+
+-- fixation in combination with argument propagation
+1 * 2 * 3 * 4 * 5
+
+let a : int = 1
+let b : int = 2
+let c : int = 3
+a + b + c
+
+-- fixation and argument propagation and recursive parsing
+1 * 2 * (3 + 4) * 5
+
+-- boolean logic
+-- factorial 5

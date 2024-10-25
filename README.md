@@ -17,6 +17,7 @@
 - Interactive shell
 
 ### Roadmap
+- type inference (one useful error messages maybe)
 - if-else-statements
 - Dependent types (Array<T> for example)
 - Arrays

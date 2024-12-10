@@ -8,7 +8,8 @@
 - **Type multiplication**: "int*3" for "int int int"
 - **Argument propagation**: "mul 3 mul 3 2" equals 18
 - Full immutability
-- Nesting not supported
+- Never nester: Nesting not supported
+- Never brancher: Branching not supported (for performance)
 
 ### Capabilties
 - Defining variables, functions and types
